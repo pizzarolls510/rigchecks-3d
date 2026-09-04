@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#081018" />
-    <meta name="description" content="Inspect GLB animations frame by frame on any device." />
+    <meta name="description" content="Inspect GLB animations and static poses on any device." />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="RigCheck" />
@@ -13,6 +13,7 @@
     <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
     <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./patch-v02.css" />
     <script type="importmap">
       {
         "imports": {
@@ -28,7 +29,7 @@
         <div class="brand" aria-label="RigCheck 3D">
           <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
           <span>RigCheck <b>3D</b></span>
-          <span class="version">PREVIEW 0.1</span>
+          <span class="version">PREVIEW 0.2</span>
         </div>
         <div class="top-actions">
           <button class="button ghost" id="installButton" type="button" hidden>Install</button>
@@ -69,13 +70,13 @@
           <div class="toast" id="toast" role="status" aria-live="polite"></div>
         </section>
 
-        <aside class="inspector" aria-label="Animation inspector">
+        <aside class="inspector" aria-label="Animation and pose inspector">
           <section class="panel-section clip-section">
             <div class="section-heading">
-              <span>Animation</span>
+              <span>Motion / Pose</span>
               <span class="privacy-pill">Local only</span>
             </div>
-            <label class="field-label" for="clipSelect">Clip</label>
+            <label class="field-label" for="clipSelect">Clip or pose</label>
             <select id="clipSelect" class="select"></select>
 
             <div class="field-row">
@@ -132,5 +133,6 @@
     </div>
 
     <script type="module" src="./app.js"></script>
+    <script src="./patch-v02.js"></script>
   </body>
 </html>
