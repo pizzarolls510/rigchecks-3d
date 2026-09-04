@@ -1,4 +1,4 @@
-const CACHE = "rigcheck-v0.4.1";
+const CACHE = "rigcheck-v0.4.2";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -6,6 +6,7 @@ const APP_SHELL = [
   "./patch-v02.css",
   "./firebase-auth.css",
   "./cloud-library.css",
+  "./update-manager.js",
   "./app.js",
   "./patch-v02.js",
   "./firebase-auth.js",
@@ -39,18 +40,6 @@ self.addEventListener("activate", (event) => {
     const keys = await caches.keys();
     await Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)));
     await self.clients.claim();
-
-    // iOS can leave an installed PWA displaying HTML from the previous worker.
-    // A one-time navigation during activation makes the newly activated build visible immediately.
-    const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-    await Promise.all(clients.map(async (client) => {
-      try {
-        const url = new URL(client.url);
-        if (url.origin === self.location.origin) await client.navigate(client.url);
-      } catch (error) {
-        console.warn("RigCheck update refresh skipped", error);
-      }
-    }));
   })());
 });
 
@@ -60,7 +49,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Network-first keeps Safari/Home Screen builds fresh while retaining full offline fallback.
+  // Network-first keeps the app current while preserving an offline fallback.
   event.respondWith(
     fetch(event.request)
       .then((response) => {
