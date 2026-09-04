@@ -1,11 +1,13 @@
-const CACHE = "rigcheck-v0.2.1";
+const CACHE = "rigcheck-v0.3.0";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./patch-v02.css",
+  "./firebase-auth.css",
   "./app.js",
   "./patch-v02.js",
+  "./firebase-auth.js",
   "./manifest.webmanifest",
   "./icons/icon.svg",
   "./icons/icon-192.png",
