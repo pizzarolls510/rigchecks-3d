@@ -1,4 +1,4 @@
-// RigCheck 3D v0.2 — static-pose behavior and upload-overlay fix.
+// RigCheck 3D v0.2.1 — static-pose behavior and upload-overlay fix.
 (() => {
   const dropPrompt = document.querySelector('#dropPrompt');
   const fileInput = document.querySelector('#fileInput');
@@ -38,8 +38,10 @@
 
     if (loopToggle) loopToggle.disabled = isStatic;
 
-    if (isStatic && clipSelect.options[0]) {
-      clipSelect.options[0].textContent = 'Static pose · no animation';
+    const option = clipSelect.options[0];
+    const staticLabel = 'Static pose · no animation';
+    if (isStatic && option && option.textContent !== staticLabel) {
+      option.textContent = staticLabel;
     }
 
     if (!isStatic) {
@@ -48,9 +50,6 @@
     }
   }
 
-  // iOS Safari was visually showing the drag target because the CSS display rule
-  // overrode the native [hidden] behavior. The CSS patch fixes that; these guards
-  // also make sure it disappears immediately when a file is chosen or the view is used.
   fileInput?.addEventListener('change', () => {
     if (dropPrompt) dropPrompt.hidden = true;
     setTimeout(syncMode, 0);
@@ -67,13 +66,15 @@
     }
   }, { passive: true });
 
-  const observer = new MutationObserver(syncMode);
-  observer.observe(clipSelect, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
-
-  const sourceLabel = document.querySelector('#sourceLabel');
-  const modelLabel = document.querySelector('#modelLabel');
-  if (sourceLabel) observer.observe(sourceLabel, { childList: true, characterData: true, subtree: true });
-  if (modelLabel) observer.observe(modelLabel, { childList: true, characterData: true, subtree: true });
+  const observer = new MutationObserver(() => {
+    queueMicrotask(syncMode);
+  });
+  observer.observe(clipSelect, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['disabled']
+  });
 
   syncMode();
 })();
