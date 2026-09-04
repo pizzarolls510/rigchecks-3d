@@ -1,4 +1,4 @@
-const CACHE = "rigcheck-v0.4.0";
+const CACHE = "rigcheck-v0.4.1";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -35,11 +35,23 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim())
-  );
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)));
+    await self.clients.claim();
+
+    // iOS can leave an installed PWA displaying HTML from the previous worker.
+    // A one-time navigation during activation makes the newly activated build visible immediately.
+    const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    await Promise.all(clients.map(async (client) => {
+      try {
+        const url = new URL(client.url);
+        if (url.origin === self.location.origin) await client.navigate(client.url);
+      } catch (error) {
+        console.warn("RigCheck update refresh skipped", error);
+      }
+    }));
+  })());
 });
 
 self.addEventListener("fetch", (event) => {
