@@ -125,13 +125,7 @@ GitHub Actions publishes `dist/` to Pages via `.github/workflows/pages.yml`
 (**Settings → Pages → Source: GitHub Actions**). Live at
 <https://pizzarolls510.github.io/rigchecks-3d/>.
 
----
-
-## Known cleanup
-
-- `dist/mobile-cloud-fix.css` is **orphaned** — it is deployed and served, but
-  referenced by nothing (not `index.html`, not `APP_SHELL`, not injected). Its
-  rules were also applied in `cloud-library.css` (the `max-width: 430px` block
-  forcing `.account-button` / `.library-button` back to `inline-flex`, undoing
-  `.top-actions .ghost { display: none }` from `styles.css`). The fix is live via
-  `cloud-library.css`; this file is a leftover duplicate and can be deleted.
+The narrow-iPhone rule that keeps **Cloud** and **Library** visible lives in the
+`max-width: 430px` block of `cloud-library.css`. It exists to undo
+`.top-actions .ghost { display: none }` from `styles.css`, which otherwise hides
+both buttons. Keep it in mind before touching either rule.
