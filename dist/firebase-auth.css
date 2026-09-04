@@ -1,0 +1,147 @@
+/* RigCheck 3D v0.3 — Firebase account UI */
+.account-button.signed-in {
+  border-color: rgba(69, 240, 221, 0.32);
+  color: var(--cyan);
+}
+
+.account-overlay[hidden] {
+  display: none !important;
+}
+
+.account-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(1, 8, 13, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+body.account-open {
+  overflow: hidden;
+}
+
+.account-card {
+  width: min(440px, 100%);
+  padding: 18px;
+  border: 1px solid rgba(69, 240, 221, 0.2);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(13, 28, 37, 0.98), rgba(7, 18, 26, 0.98));
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+}
+
+.account-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.account-card h2 {
+  margin: 3px 0 0;
+  color: var(--text);
+  font-size: 1.18rem;
+}
+
+.account-close {
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.account-state {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.account-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(69, 240, 221, 0.28);
+  border-radius: 50%;
+  background: rgba(69, 240, 221, 0.08);
+  color: var(--cyan);
+  font-weight: 800;
+}
+
+.account-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.account-copy strong,
+.account-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-copy strong {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.account-copy span,
+.account-note {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.account-note {
+  margin: 13px 2px;
+  line-height: 1.5;
+}
+
+.account-card .wide + .wide {
+  margin-top: 9px;
+}
+
+.account-local {
+  display: block;
+  margin: 12px auto 0;
+}
+
+.account-error {
+  min-height: 1.2em;
+  margin: 10px 2px 0;
+  color: #ff9b9b;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 560px) {
+  .account-button {
+    min-width: 0;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .account-overlay {
+    align-items: end;
+    padding: 10px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+
+  .account-card {
+    width: 100%;
+    border-radius: 18px 18px 12px 12px;
+  }
+}
