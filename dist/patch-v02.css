@@ -1,0 +1,88 @@
+/* RigCheck 3D v0.2 — static-pose and upload-overlay fixes */
+
+/* The author display:grid rule was overriding iOS Safari's hidden state. */
+.drop-prompt[hidden] {
+  display: none !important;
+}
+
+.pose-hint {
+  margin: 10px 0 0;
+  padding: 10px 11px;
+  border: 1px solid rgba(69, 240, 221, 0.2);
+  border-radius: 8px;
+  background: rgba(69, 240, 221, 0.055);
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.pose-hint strong {
+  color: var(--cyan);
+  font-weight: 700;
+}
+
+.pose-hint[hidden],
+.pose-viewport-hint[hidden] {
+  display: none !important;
+}
+
+.pose-viewport-hint {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  bottom: max(18px, var(--safe-bottom));
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 8px 11px;
+  border: 1px solid rgba(69, 240, 221, 0.24);
+  border-radius: 999px;
+  background: rgba(5, 18, 25, 0.82);
+  color: var(--muted);
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font: 650 0.66rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.035em;
+}
+
+.pose-viewport-hint b {
+  color: var(--cyan);
+  font-weight: 750;
+}
+
+body.static-model .transport {
+  display: none;
+}
+
+body.static-model .field-row,
+body.static-model #speedRange {
+  display: none;
+}
+
+body.static-model .clip-section .select {
+  color: var(--cyan);
+  border-color: rgba(69, 240, 221, 0.24);
+  background: rgba(69, 240, 221, 0.045);
+}
+
+body.static-model .toggle:has(#loopToggle) {
+  opacity: 0.42;
+}
+
+button:disabled,
+input:disabled,
+select:disabled {
+  cursor: default;
+}
+
+@media (max-width: 760px) {
+  .pose-viewport-hint {
+    bottom: 12px;
+    font-size: 0.62rem;
+    padding: 7px 10px;
+  }
+}
