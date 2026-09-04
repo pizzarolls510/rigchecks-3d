@@ -1,9 +1,11 @@
-const CACHE = "rigcheck-v0.1.0";
+const CACHE = "rigcheck-v0.2.0";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
+  "./patch-v02.css",
   "./app.js",
+  "./patch-v02.js",
   "./manifest.webmanifest",
   "./icons/icon.svg",
   "./icons/icon-192.png",
