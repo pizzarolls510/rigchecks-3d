@@ -22,6 +22,13 @@ import {
   getDownloadURL,
   deleteObject
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-storage.js";
+import {
+  createCloudModelDocument,
+  GLB_CONTENT_TYPE,
+  MAX_GLB_BYTES,
+  modelStoragePath,
+  safeDisplayName
+} from "./lib/model-schema.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDpXmQbxQ0NzY-oTI9lfdxi7DO5MMXZdYg",
@@ -33,11 +40,12 @@ const firebaseConfig = {
   measurementId: "G-KL9Q38WL3S"
 };
 
-const MAX_GLB_BYTES = 200 * 1024 * 1024;
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
+const CLOUD_DOWNLOAD_TIMEOUT_MS = 120000;
+const VIEWER_LOAD_TIMEOUT_MS = 60000;
 
 const topActions = document.querySelector('.top-actions');
 const fileInput = document.querySelector('#fileInput');
@@ -169,6 +177,14 @@ function initCloudLibrary() {
 
   function setProgress(label, fraction = 0, visible = true) {
     progress.hidden = !visible;
+    const indeterminate = fraction === null;
+    progress.classList.toggle('indeterminate', indeterminate);
+    if (indeterminate) {
+      progressLabel.textContent = label;
+      progressPercent.textContent = 'WORKING';
+      progressBar.style.width = '32%';
+      return;
+    }
     const pct = Math.max(0, Math.min(100, Math.round(fraction * 100)));
     progressLabel.textContent = label;
     progressPercent.textContent = `${pct}%`;
@@ -199,15 +215,6 @@ function initCloudLibrary() {
     };
   }
 
-  function safeDisplayName(fileName) {
-    return fileName.replace(/\.glb$/i, '').replace(/[_-]+/g, ' ').trim() || 'Untitled model';
-  }
-
-  function safeStorageName(fileName) {
-    const cleaned = fileName.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
-    return cleaned || 'model.glb';
-  }
-
   function modelCollection(uid = currentUser?.uid) {
     return collection(db, 'users', uid, 'models');
   }
@@ -223,6 +230,12 @@ function initCloudLibrary() {
     }
     if (code.includes('failed-precondition') || code.includes('not-found')) {
       return 'Create the Firestore database and Cloud Storage bucket for this Firebase project, then try again.';
+    }
+    if (code === 'rigcheck/download-timeout') {
+      return 'The model download timed out. Check your connection and try again.';
+    }
+    if (code.includes('storage/download-size-exceeded')) {
+      return 'That cloud model exceeds RigCheck\'s 200 MB download limit.';
     }
     if (code.includes('storage/quota-exceeded')) return 'Firebase Storage quota was exceeded.';
     if (!navigator.onLine) return 'You are offline. Local RigCheck still works; cloud actions need a connection.';
@@ -254,7 +267,7 @@ function initCloudLibrary() {
     return path;
   }
 
-  async function waitForViewer(fileName, timeoutMs = 12000) {
+  async function waitForViewer(fileName, timeoutMs = VIEWER_LOAD_TIMEOUT_MS) {
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {
       if (modelLabel?.textContent === fileName && sourceLabel?.textContent === 'LOCAL FILE') {
@@ -265,6 +278,34 @@ function initCloudLibrary() {
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     return false;
+  }
+
+  async function downloadModelBlob(model) {
+    const expectedBytes = Number(model.sizeBytes);
+    if (Number.isFinite(expectedBytes) && expectedBytes > MAX_GLB_BYTES) {
+      const error = new Error('Cloud model exceeds the download limit.');
+      error.code = 'storage/download-size-exceeded';
+      throw error;
+    }
+
+    let timeoutId;
+    const timeout = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        const error = new Error('Cloud model download timed out.');
+        error.code = 'rigcheck/download-timeout';
+        reject(error);
+      }, CLOUD_DOWNLOAD_TIMEOUT_MS);
+    });
+
+    setProgress(`Downloading ${model.name || model.originalName || 'model'}…`, null, true);
+    try {
+      return await Promise.race([
+        getBlob(storageRef(storage, model.storagePath), MAX_GLB_BYTES),
+        timeout
+      ]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   async function loadFileIntoViewer(file, source = 'LOCAL FILE') {
@@ -296,8 +337,7 @@ function initCloudLibrary() {
     setBusy(true);
     setStatus('');
     let modelId = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const fileName = safeStorageName(file.name);
-    const modelPath = `users/${currentUser.uid}/models/${modelId}/${fileName}`;
+    const modelPath = modelStoragePath(currentUser.uid, modelId, file.name);
 
     try {
       if (loadFirst) {
@@ -306,7 +346,7 @@ function initCloudLibrary() {
       }
 
       const task = uploadBytesResumable(storageRef(storage, modelPath), file, {
-        contentType: file.type || 'model/gltf-binary',
+        contentType: GLB_CONTENT_TYPE,
         customMetadata: { originalName: file.name }
       });
       await uploadTaskPromise(task, `Uploading ${file.name}…`);
@@ -320,23 +360,19 @@ function initCloudLibrary() {
       }
 
       setProgress('Saving model info…', 1, true);
-      await setDoc(modelDoc(modelId), {
-        id: modelId,
-        name: safeDisplayName(file.name),
+      await setDoc(modelDoc(modelId), createCloudModelDocument({
+        modelId,
         originalName: file.name,
         storagePath: modelPath,
-        thumbnailPath,
         sizeBytes: file.size,
-        contentType: file.type || 'model/gltf-binary',
         triangles: stats.triangles,
         meshes: stats.meshes,
         bones: stats.bones,
         clips: stats.clips,
-        favorite: false,
-        uploadedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        lastOpenedAt: serverTimestamp()
-      });
+        thumbnailPath,
+        sha256: null,
+        timestamp: serverTimestamp()
+      }));
 
       setStatus(`${file.name} is saved to your Cloud Library.`);
       await refreshModels();
@@ -373,7 +409,9 @@ function initCloudLibrary() {
     setBusy(true);
     setStatus(`Downloading ${model.name || model.originalName || 'model'}…`);
     try {
-      const blob = await getBlob(storageRef(storage, model.storagePath));
+      const blob = await downloadModelBlob(model);
+      setStatus(`Opening ${model.name || model.originalName || 'model'}…`);
+      setProgress('Opening model…', 1, true);
       const file = new File([blob], model.originalName || `${model.name || 'model'}.glb`, {
         type: model.contentType || blob.type || 'model/gltf-binary'
       });
@@ -389,6 +427,7 @@ function initCloudLibrary() {
       setStatus(firebaseMessage(error), true);
     } finally {
       setBusy(false);
+      setTimeout(() => setProgress('', 0, false), 700);
     }
   }
 
