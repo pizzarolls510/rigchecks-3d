@@ -357,6 +357,9 @@ async function handleFiles(fileList, restored = false) {
       source: restored ? "SAVED ON THIS DEVICE" : "LOCAL FILE",
       size: formatBytes(primary.size)
     });
+    window.dispatchEvent(new CustomEvent("rigcheck:model-loaded", {
+      detail: { file: primary, restored }
+    }));
     showToast(`${gltf.animations.length} animation clip${gltf.animations.length === 1 ? "" : "s"} loaded.`);
     if (!restored && elements.rememberToggle.checked && /\.glb$/i.test(primary.name)) await saveLatestModel(primary);
     else if (!restored && elements.rememberToggle.checked && !/\.glb$/i.test(primary.name)) showToast("Use GLB if you want this device to remember the model.");

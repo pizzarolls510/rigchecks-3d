@@ -69,7 +69,8 @@ if (!topActions || !fileInput) {
 function initCloudLibrary() {
   let currentUser = null;
   let currentModels = [];
-  let lastLocalGlb = null;
+  let currentViewerGlb = null;
+  let currentViewerSource = null;
   let cloudLoadInProgress = false;
   let busy = false;
 
@@ -101,7 +102,7 @@ function initCloudLibrary() {
       </header>
 
       <div class="cloud-library-actions">
-        <button class="button primary" id="saveCurrentCloud" type="button" disabled>Save current model</button>
+        <button class="button primary" id="saveCurrentCloud" type="button" disabled>Save to Library</button>
         <button class="button secondary" id="uploadCloudModel" type="button">Upload GLB</button>
         <input id="cloudUploadInput" type="file" accept=".glb,model/gltf-binary,application/octet-stream" hidden />
       </div>
@@ -170,9 +171,18 @@ function initCloudLibrary() {
 
   function setBusy(nextBusy) {
     busy = nextBusy;
-    saveCurrentButton.disabled = busy || !lastLocalGlb || !currentUser;
+    syncSaveCurrentButton();
     uploadButton.disabled = busy || !currentUser;
     refreshButton.disabled = busy || !currentUser;
+  }
+
+  function syncSaveCurrentButton() {
+    const cloudModelIsOpen = currentViewerSource === 'cloud';
+    saveCurrentButton.textContent = cloudModelIsOpen ? 'Save model to device' : 'Save to Library';
+    saveCurrentButton.title = cloudModelIsOpen
+      ? 'Download the complete GLB currently open in the viewer'
+      : 'Upload the local GLB currently open in the viewer';
+    saveCurrentButton.disabled = busy || !currentViewerGlb || !currentUser;
   }
 
   function setProgress(label, fraction = 0, visible = true) {
@@ -323,6 +333,61 @@ function initCloudLibrary() {
     }
   }
 
+  async function saveCurrentModel() {
+    if (!currentViewerGlb || busy) return;
+    if (currentViewerSource !== 'cloud') {
+      await uploadModel(currentViewerGlb);
+      return;
+    }
+
+    await saveFileToDevice(currentViewerGlb);
+  }
+
+  async function saveFileToDevice(file) {
+    try {
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: file.name });
+        setStatus(`${file.name} was sent to the destination you chose.`);
+        return true;
+      }
+    } catch (error) {
+      if (error?.name === 'AbortError') return false;
+      console.warn('RigCheck model share fell back to a download:', error);
+    }
+
+    const url = URL.createObjectURL(file);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = file.name || 'rigcheck-model.glb';
+    link.hidden = true;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    setStatus(`${link.download} was saved to your downloads.`);
+    return true;
+  }
+
+  async function downloadCloudModel(model) {
+    if (!currentUser || busy) return;
+    setBusy(true);
+    setStatus(`Downloading ${model.name || model.originalName || 'model'}…`);
+    try {
+      const blob = await downloadModelBlob(model);
+      setProgress('Preparing model file…', 1, true);
+      const file = new File([blob], model.originalName || `${model.name || 'model'}.glb`, {
+        type: model.contentType || blob.type || 'model/gltf-binary'
+      });
+      await saveFileToDevice(file);
+    } catch (error) {
+      console.error('RigCheck cloud model save error:', error);
+      setStatus(firebaseMessage(error), true);
+    } finally {
+      setBusy(false);
+      setTimeout(() => setProgress('', 0, false), 700);
+    }
+  }
+
   async function uploadModel(file, { loadFirst = false } = {}) {
     if (!currentUser || busy) return;
     if (!file || !/\.glb$/i.test(file.name)) {
@@ -341,7 +406,6 @@ function initCloudLibrary() {
 
     try {
       if (loadFirst) {
-        lastLocalGlb = file;
         await loadFileIntoViewer(file, 'LOCAL FILE');
       }
 
@@ -547,6 +611,13 @@ function initCloudLibrary() {
       open.textContent = 'Open';
       open.className = 'cloud-mini-button primary';
       open.addEventListener('click', () => openCloudModel(model));
+      const download = document.createElement('button');
+      download.type = 'button';
+      download.textContent = '↓';
+      download.className = 'cloud-mini-button icon';
+      download.title = 'Save full GLB to device';
+      download.setAttribute('aria-label', `Save ${model.name || model.originalName || 'model'} to device`);
+      download.addEventListener('click', () => downloadCloudModel(model));
       const favorite = document.createElement('button');
       favorite.type = 'button';
       favorite.textContent = model.favorite ? '★' : '☆';
@@ -563,7 +634,7 @@ function initCloudLibrary() {
         if (action?.trim().toUpperCase() === 'RENAME') await renameModel(model);
         if (action?.trim().toUpperCase() === 'DELETE') await deleteModel(model);
       });
-      actions.append(open, favorite, more);
+      actions.append(open, download, favorite, more);
 
       card.append(preview, body, actions);
       list.appendChild(card);
@@ -577,14 +648,15 @@ function initCloudLibrary() {
     if (event.key === 'Escape' && !overlay.hidden) closeLibrary();
   });
 
-  fileInput.addEventListener('change', () => {
-    if (cloudLoadInProgress) return;
-    const next = [...fileInput.files].find((file) => /\.glb$/i.test(file.name));
-    if (next) lastLocalGlb = next;
-    saveCurrentButton.disabled = busy || !lastLocalGlb || !currentUser;
+  window.addEventListener('rigcheck:model-loaded', (event) => {
+    const file = event.detail?.file;
+    if (!(file instanceof File) || !/\.glb$/i.test(file.name)) return;
+    currentViewerGlb = file;
+    currentViewerSource = cloudLoadInProgress ? 'cloud' : 'local';
+    syncSaveCurrentButton();
   });
 
-  saveCurrentButton.addEventListener('click', () => uploadModel(lastLocalGlb));
+  saveCurrentButton.addEventListener('click', saveCurrentModel);
   uploadButton.addEventListener('click', () => uploadInput.click());
   uploadInput.addEventListener('change', async () => {
     const file = uploadInput.files?.[0];
@@ -607,7 +679,7 @@ function initCloudLibrary() {
     currentUser = user || null;
     libraryButton.classList.toggle('signed-in', Boolean(user));
     libraryButton.title = user ? 'Open your Cloud Model Library' : 'Sign in to use Cloud Model Library';
-    saveCurrentButton.disabled = busy || !lastLocalGlb || !user;
+    syncSaveCurrentButton();
     uploadButton.disabled = busy || !user;
     if (!user) {
       currentModels = [];

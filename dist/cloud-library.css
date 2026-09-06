@@ -11,6 +11,9 @@
 .cloud-library-overlay {
   position: fixed;
   inset: 0;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
   z-index: 120;
   display: grid;
   place-items: center;
@@ -39,6 +42,7 @@ body.cloud-library-open {
 }
 
 .cloud-library-head {
+  flex: 0 0 auto;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -69,6 +73,8 @@ body.cloud-library-open {
   color: var(--text);
   font-size: 1.45rem;
   line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
 .cloud-library-actions {
@@ -197,9 +203,13 @@ body.cloud-library-open {
 }
 
 .cloud-model-list {
+  flex: 1 1 auto;
   min-height: 120px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   display: flex;
   flex-direction: column;
   gap: 9px;
@@ -330,15 +340,23 @@ body.cloud-library-open {
 
 @media (max-width: 760px) {
   .cloud-library-overlay {
-    place-items: end center;
+    place-items: stretch center;
+    overflow: hidden;
     padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
   }
 
   .cloud-library-card {
     width: 100%;
-    max-height: 92vh;
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
     padding: 14px;
     border-radius: 16px;
+  }
+
+  .cloud-library-close {
+    width: 44px;
+    height: 44px;
   }
 
   .cloud-model-card {
