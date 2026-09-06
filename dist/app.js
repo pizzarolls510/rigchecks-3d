@@ -14,6 +14,7 @@ const elements = {
   playButton: document.querySelector("#playButton"),
   previousFrame: document.querySelector("#previousFrame"),
   nextFrame: document.querySelector("#nextFrame"),
+  directionButton: document.querySelector("#directionButton"),
   timeline: document.querySelector("#timeline"),
   timecode: document.querySelector("#timecode"),
   speedRange: document.querySelector("#speedRange"),
@@ -86,6 +87,7 @@ const state = {
   action: null,
   clipIndex: 0,
   playing: true,
+  playbackDirection: 1,
   duration: 0,
   bounds: new THREE.Box3(),
   sphere: new THREE.Sphere(),
@@ -220,12 +222,14 @@ function populateClips() {
     elements.clipSelect.add(option);
     elements.clipSelect.disabled = true;
     elements.playButton.disabled = true;
+    elements.directionButton.disabled = true;
     elements.timeline.disabled = true;
     return;
   }
   state.clips.forEach((clip, index) => elements.clipSelect.add(new Option(clip.name || `Clip ${index + 1}`, String(index))));
   elements.clipSelect.disabled = false;
   elements.playButton.disabled = false;
+  elements.directionButton.disabled = false;
   elements.timeline.disabled = false;
 }
 
@@ -239,10 +243,14 @@ function selectClip(index) {
   applyLoopSetting();
   state.action.reset().play();
   state.action.paused = !state.playing;
+  const startTime = state.playbackDirection < 0 ? Math.max(state.duration - 0.000001, 0) : 0;
+  state.action.time = startTime;
+  state.mixer.update(0);
   elements.clipSelect.value = String(index);
-  elements.timeline.value = "0";
-  updateTimeDisplay(0, state.duration);
+  elements.timeline.value = String(Math.round((startTime / state.duration) * 1000));
+  updateTimeDisplay(startTime, state.duration);
   syncPlayButton();
+  syncDirectionButton();
 }
 
 function applyLoopSetting() {
@@ -266,6 +274,24 @@ function togglePlayback(force) {
 function syncPlayButton() {
   elements.playButton.textContent = state.playing ? "Pause" : "Play";
   elements.playButton.setAttribute("aria-label", state.playing ? "Pause animation" : "Play animation");
+}
+
+function togglePlaybackDirection() {
+  if (!state.action) return;
+  state.playbackDirection *= -1;
+  const atStart = state.action.time <= 0.000001;
+  const atEnd = state.action.time >= state.duration - 0.000001;
+  if (state.playbackDirection < 0 && atStart) seekTo(state.duration - 0.000001);
+  if (state.playbackDirection > 0 && atEnd) seekTo(0);
+  syncDirectionButton();
+  showToast(state.playbackDirection < 0 ? "Reverse playback." : "Forward playback.");
+}
+
+function syncDirectionButton() {
+  const reversing = state.playbackDirection < 0;
+  elements.directionButton.setAttribute("aria-pressed", String(reversing));
+  elements.directionButton.setAttribute("aria-label", reversing ? "Return to forward playback" : "Play animation in reverse");
+  elements.directionButton.title = reversing ? "Reverse playback is on" : "Play in reverse";
 }
 
 function seekTo(seconds) {
@@ -511,7 +537,9 @@ function resize() {
 function animate() {
   requestAnimationFrame(animate);
   const delta = Math.min(state.clock.getDelta(), 0.1);
-  if (state.mixer && state.playing) state.mixer.update(delta * Number(elements.speedRange.value));
+  if (state.mixer && state.playing) {
+    state.mixer.update(delta * Number(elements.speedRange.value) * state.playbackDirection);
+  }
   if (state.action) {
     elements.timeline.value = String(Math.round((state.action.time / state.duration) * 1000));
     updateTimeDisplay(state.action.time, state.duration);
@@ -536,6 +564,7 @@ elements.clipSelect.addEventListener("change", () => selectClip(Number(elements.
 elements.playButton.addEventListener("click", () => togglePlayback());
 elements.previousFrame.addEventListener("click", () => stepFrame(-1));
 elements.nextFrame.addEventListener("click", () => stepFrame(1));
+elements.directionButton.addEventListener("click", togglePlaybackDirection);
 elements.timeline.addEventListener("input", () => {
   togglePlayback(false);
   seekTo((Number(elements.timeline.value) / 1000) * state.duration);

@@ -118,11 +118,11 @@ button, .button { touch-action: manipulation; }
 .stage-status strong { font-size: 0.95rem; font-weight: 650; max-width: min(60vw, 520px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .eyebrow { color: var(--cyan); font: 650 0.66rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.12em; }
 .view-actions { position: absolute; z-index: 4; top: 14px; right: 14px; display: flex; gap: 7px; }
-.icon-button, .transport-button, .play-button, .preset-grid button {
+.icon-button, .transport-button, .play-button, .direction-button, .preset-grid button {
   color: var(--muted); background: rgba(7, 15, 23, 0.8); border: 1px solid var(--line); border-radius: 8px; cursor: pointer;
 }
 .icon-button { min-width: 43px; height: 38px; font-size: 0.76rem; }
-.icon-button:hover, .transport-button:hover, .preset-grid button:hover { color: var(--ink); border-color: var(--line-strong); }
+.icon-button:hover, .transport-button:hover, .direction-button:hover, .preset-grid button:hover { color: var(--ink); border-color: var(--line-strong); }
 
 .transport {
   position: absolute;
@@ -141,6 +141,9 @@ button, .button { touch-action: manipulation; }
 .transport-row { display: flex; align-items: center; justify-content: center; gap: 8px; }
 .transport-button { min-width: 42px; height: 36px; font: 650 0.74rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .play-button { height: 36px; min-width: 72px; color: #06121a; background: var(--blue-bright); border-color: transparent; font-size: 0.8rem; font-weight: 740; }
+.direction-button { height: 36px; min-width: 76px; padding: 0 10px; font-size: 0.74rem; font-weight: 680; }
+.direction-button[aria-pressed="true"] { color: #04151c; background: var(--cyan); border-color: transparent; box-shadow: 0 0 16px rgba(69, 240, 221, .2); }
+.direction-button:disabled { cursor: default; opacity: .42; }
 .timecode { margin-left: auto; color: var(--muted); font: 600 0.72rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
 
 input[type="range"] { accent-color: var(--blue); }
@@ -227,6 +230,9 @@ input[type="range"] { accent-color: var(--blue); }
   .brand { font-size: .9rem; }
   .brand-mark { width: 25px; height: 25px; }
   .top-actions .ghost { display: none; }
+  .transport-row { flex-wrap: wrap; }
+  .direction-button { min-width: 66px; padding-inline: 8px; }
+  .timecode { flex-basis: 100%; margin: 2px 0 0; text-align: center; }
 }
 
 @media (display-mode: standalone) {
