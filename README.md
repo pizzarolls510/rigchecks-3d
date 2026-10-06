@@ -43,6 +43,9 @@ controlled by security rules, not by hiding these values.
 - Storage bucket: `rigcheck-cfbe3.firebasestorage.app`
 - SDK: `firebasejs/12.18.0`, loaded from `gstatic.com`
 - Auth: **Google only**, via `signInWithPopup`
+- Browser downloads use Firebase Storage `getBlob()`. The bucket CORS policy must
+  allow `GET` requests from `https://pizzarolls510.github.io`; Firebase security
+  rules still enforce that the signed-in UID owns the requested model.
 
 Any domain serving the app must be listed under **Firebase Console → Auth →
 Settings → Authorized domains**, or sign-in fails with `auth/unauthorized-domain`
@@ -70,6 +73,7 @@ Firestore  users/{uid}/models/{modelId}
 | `thumbnailPath` | `null` if the thumbnail capture failed |
 | `sizeBytes`, `contentType` | `contentType` defaults to `model/gltf-binary` |
 | `triangles`, `meshes`, `bones`, `clips` | captured from the viewer after load |
+| `schemaVersion`, `sha256` | schema version and optional exact-file digest for CLI duplicate detection |
 | `favorite` | boolean |
 | `uploadedAt`, `updatedAt`, `lastOpenedAt` | `serverTimestamp()` |
 
@@ -105,7 +109,7 @@ match /users/{uid}/{allPaths=**} {
 ## Service worker — read before deploying
 
 `sw.js` precaches an explicit `APP_SHELL` list under a versioned cache key
-(currently `rigcheck-v0.4.3`). Two rules follow from that:
+(currently `rigcheck-v0.4.7`). Two rules follow from that:
 
 1. **Adding a file to `dist/` is not enough.** If it is part of the shell it must
    be added to `APP_SHELL`, or installed clients never fetch it.
@@ -129,3 +133,54 @@ The narrow-iPhone rule that keeps **Cloud** and **Library** visible lives in the
 `max-width: 430px` block of `cloud-library.css`. It exists to undo
 `.top-actions .ghost { display: none }` from `styles.css`, which otherwise hides
 both buttons. Keep it in mind before touching either rule.
+
+---
+
+## RigCheck CLI
+
+The repository includes a small Node.js 22+ CLI for safe agent and Debian uploads:
+
+```bash
+npm ci
+npm link
+rigcheck doctor
+rigcheck check ./model.glb
+rigcheck upload ./model.glb --dry-run
+rigcheck upload ./model.glb
+rigcheck list --json
+```
+
+All commands accept `--json`. Only `upload` accepts `--dry-run`; the other three commands are already read-only.
+
+### Configure the owner
+
+In **Firebase Console → Authentication → Users**, copy the UID of the Google account that owns the RigCheck library. Then create the ignored local configuration:
+
+```bash
+cp rigcheck.config.example.json rigcheck.config.json
+```
+
+Set the UID without changing the project ID:
+
+```json
+{
+  "projectId": "rigcheck-cfbe3",
+  "ownerUid": "your-firebase-authentication-uid"
+}
+```
+
+The CLI refuses cloud operations if the file is missing, `ownerUid` is empty, or the project ID differs from `rigcheck-cfbe3`.
+
+### Authenticate Application Default Credentials
+
+Install the Google Cloud CLI on the trusted Debian machine, then run:
+
+```bash
+gcloud auth application-default login --no-launch-browser
+gcloud auth application-default set-quota-project rigcheck-cfbe3
+rigcheck doctor
+```
+
+The signed-in Google account must have permission to read and write the project's Firestore database and Cloud Storage bucket. ADC is separate from `firebase login`; the latter authenticates the Firebase CLI but is not used as the website owner's Firebase Authentication identity.
+
+See [docs/architecture.md](docs/architecture.md) for the schema and rollback behavior. Never commit ADC or service-account credentials.
