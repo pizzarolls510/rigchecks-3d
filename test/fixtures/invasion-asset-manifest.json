@@ -1,0 +1,2274 @@
+{
+  "schema_version": 1,
+  "assets": [
+    {
+      "asset_id": "structure_alpha",
+      "display_name": "Structure Alpha",
+      "category": "structures",
+      "canonical_revision": "rev_structure_alpha_current",
+      "requirements": {
+        "source": false,
+        "runtime": true,
+        "rig_compatibility": false
+      },
+      "revisions": [
+        {
+          "revision_id": "rev_structure_alpha_current",
+          "canonical_state": "canonical",
+          "pipeline_status": null,
+          "source_path": null,
+          "runtime_path": "assets/structures/structure_alpha/structure_alpha_textures_2.png",
+          "files": [
+            {
+              "path": "assets/structures/structure_alpha/structure_alpha_reference_1.png",
+              "role": "reference",
+              "sha256": "e61e756b9e8ff689ada939bb8e0036eef100aa7a1c4a7b93fed025e00c4ea525",
+              "size_bytes": 1064344,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_alpha/structure_alpha_reference_2.png",
+              "role": "reference",
+              "sha256": "d3596f53667b4000997ebdc300c366bb7648bd1a67e871a7000ef52afe748c64",
+              "size_bytes": 1294496,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_alpha/structure_alpha_reference_3.png",
+              "role": "reference",
+              "sha256": "2c8edbc4f35eacbcdb90143075d0c8cf1a0d23363b98865278d97df12c95ffdf",
+              "size_bytes": 450058,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_alpha/structure_alpha_reference_4.png",
+              "role": "reference",
+              "sha256": "f5edbac418ac3f4d1b3a91b0e22781351588ce5f2b909e2395046cff6a9eeae9",
+              "size_bytes": 631535,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_alpha/structure_alpha_reference_5.png",
+              "role": "reference",
+              "sha256": "49dd070a522a37f51b47c8a4938db7b6091c479a90cec5a2aee9b7c8b9dfece2",
+              "size_bytes": 733251,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_alpha/structure_alpha_reference_6.png",
+              "role": "reference",
+              "sha256": "7dc98f956be91534fac00b7a37c55ab2f92f34d569a84b2d503258c739553692",
+              "size_bytes": 1877651,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_alpha/structure_alpha_reference_7.png",
+              "role": "reference",
+              "sha256": "2b611852dd4356052069a5b8e8f4cfe2446c4e8dc0e83166dfac7b61ff84330d",
+              "size_bytes": 462622,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_alpha/structure_alpha_reference_8.png",
+              "role": "reference",
+              "sha256": "e61e756b9e8ff689ada939bb8e0036eef100aa7a1c4a7b93fed025e00c4ea525",
+              "size_bytes": 1064344,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_alpha/structure_alpha_textures_1.png",
+              "role": "textures",
+              "sha256": "bdb4a5e5541ff5324b1a818a007cd6ac1471dba61556dc2bd8f7c5208614918c",
+              "size_bytes": 18766,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_alpha/structure_alpha_textures_2.png",
+              "role": "textures",
+              "sha256": "96e9509342f0684816dd44b9612e7b7a2b7290fc8db459b72b4656b18805dbc3",
+              "size_bytes": 82546,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_alpha/structure_alpha_reference_9.png",
+              "role": "reference",
+              "sha256": "eca0f40bcaa3ebc83cfc6cb0636687c4f6bc732e1d4952861ef0257001bb3c9c",
+              "size_bytes": 1230149,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_alpha/structure_alpha_textures_3.png",
+              "role": "textures",
+              "sha256": "2feeb0c9cab30cd307e30f8ca3d4046c7b8060eff6e5eee42205194ba9b09094",
+              "size_bytes": 189800,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_alpha/structure_alpha_reference_1.gif",
+              "role": "reference",
+              "sha256": "1c401c8894cbcef4ed625f627c4f2ac2402ca0ff7e8a20c17df0be4997593d33",
+              "size_bytes": 1505343,
+              "format": "gif"
+            },
+            {
+              "path": "assets/structures/structure_alpha/structure_alpha_reference_2.gif",
+              "role": "reference",
+              "sha256": "1287133de22df5ac924e0e694182fca1bd728135f8ddb00a10c34d2c96a17747",
+              "size_bytes": 1106279,
+              "format": "gif"
+            }
+          ],
+          "created_at": null,
+          "ingested_at": null,
+          "recorded_at": "2026-01-05T10:00:00Z",
+          "promoted_at": null,
+          "git_reference": "7ef0e8f451cb79e79f566e8337018661568ecba0",
+          "source": null,
+          "creator": null,
+          "note": "Synthetic fixture note for rev_structure_alpha_current. It contains no real project data.",
+          "model": {
+            "triangles": null,
+            "polygons": null,
+            "meshes": null,
+            "materials": null,
+            "textures": null,
+            "skeletons": null,
+            "animations": null
+          },
+          "rig": {
+            "status": "unknown",
+            "scope": "gltf_integrity",
+            "provider": "rigcheck",
+            "reason": "not_applicable",
+            "skeleton": null,
+            "compatible": null,
+            "required_bones": null,
+            "missing_bones": null,
+            "orientation_scale_issues": null,
+            "issues": [],
+            "checked_at": null,
+            "file_sha256": null,
+            "result": null
+          },
+          "technical": {
+            "status": "warning",
+            "issues": [
+              {
+                "code": "DEEP_INSPECTION_UNAVAILABLE",
+                "severity": "warning"
+              }
+            ],
+            "checked_at": "2026-01-05T10:04:00Z"
+          },
+          "technical_issues": [],
+          "supersedes": null,
+          "superseded_by": null,
+          "legacy_in_place": true
+        }
+      ]
+    },
+    {
+      "asset_id": "enemy_alpha",
+      "display_name": "Enemy Alpha",
+      "category": "enemies",
+      "canonical_revision": "rev_enemy_alpha_current",
+      "requirements": {
+        "source": false,
+        "runtime": true,
+        "rig_compatibility": false
+      },
+      "revisions": [
+        {
+          "revision_id": "rev_enemy_alpha_current",
+          "canonical_state": "canonical",
+          "pipeline_status": null,
+          "source_path": null,
+          "runtime_path": "assets/enemies/enemy_alpha/enemy_alpha_textures_16.png",
+          "files": [
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_1.png",
+              "role": "textures",
+              "sha256": "2e1b4ec03af951bfe20842abad439cde3370fcb2dad4bf17b0b7f72103bd1cf3",
+              "size_bytes": 1853291,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_2.png",
+              "role": "textures",
+              "sha256": "b0b8ce0b2be8cc4dfe02548918f94cf16579a9d7ce7e5f8c4319fa1dbb8415dd",
+              "size_bytes": 458294,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_3.png",
+              "role": "textures",
+              "sha256": "18a5a70898f749abef593881edc20561aed2c43b18d553b0b0d30e9f9c54e86c",
+              "size_bytes": 1730434,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_4.png",
+              "role": "textures",
+              "sha256": "410e09698eb1b85bf63591a3455ceb3ae780c8bd08473b663d90b9c4c95cf788",
+              "size_bytes": 1407369,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_5.png",
+              "role": "textures",
+              "sha256": "841b7b9330916ba4e399ffd53a3f69d06c7b0bb4217469ee890bb7a66888f9fa",
+              "size_bytes": 708490,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_6.png",
+              "role": "textures",
+              "sha256": "8d4babf4ddb10e638772c96399773d2266cdf0598ffdc32d020825514237f951",
+              "size_bytes": 97823,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_7.png",
+              "role": "textures",
+              "sha256": "5ebbf46bc7f474b1d3dfa8c7d0591b73848c4dd4cd08434f39a4eaf6edcadd32",
+              "size_bytes": 469159,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_8.png",
+              "role": "textures",
+              "sha256": "a715ac1e5bc95cfa21d531d912819686a361d2046b9d1d3c714aaad80042f26a",
+              "size_bytes": 285012,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_9.png",
+              "role": "textures",
+              "sha256": "a726772ca8f54692f98bde8d272a0d40617a47311e1ef2f58754a2c19250a149",
+              "size_bytes": 676688,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_10.png",
+              "role": "textures",
+              "sha256": "748482e3ad8691748fbc9656c8f3b1bc23806605f9c12f9dc4b99155d7b194db",
+              "size_bytes": 272666,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_11.png",
+              "role": "textures",
+              "sha256": "b69aad1e8d6245cf3672079ca834e0e91b1cf2e5778ad8ff9ba42b44787599bd",
+              "size_bytes": 19720,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_12.png",
+              "role": "textures",
+              "sha256": "c32ef73b728dcf8a5af135f067dada687e259a85b22e0e6fbb39aae632fdae5c",
+              "size_bytes": 501419,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_13.png",
+              "role": "textures",
+              "sha256": "ddc7b2523a54e5e1146f6bf5a92761d0f4306c53108dcae9b6c0fdde1cbfd986",
+              "size_bytes": 1121594,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_14.png",
+              "role": "textures",
+              "sha256": "f002d1ad4abaf970456808b109eb8469d90f79a1cc1ac37bc4276ae9a6c8202f",
+              "size_bytes": 1098422,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_15.png",
+              "role": "textures",
+              "sha256": "78d2fb62be240ed5cf41214307b91f6744d57f4545db5ab7d3b2307e195fc19b",
+              "size_bytes": 1488032,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_16.png",
+              "role": "textures",
+              "sha256": "bd355d1eab5c62ab7a722ac696f4a9e8a516b92e937eea388a94a3ceb951ddf9",
+              "size_bytes": 1699358,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_17.png",
+              "role": "textures",
+              "sha256": "6b6edb495955a97e95c029dc6d9214a7b2306f0ac7dccc3b6d17b02147979533",
+              "size_bytes": 888691,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_18.png",
+              "role": "textures",
+              "sha256": "d3d4c2ccbefb2f6b3939566a7bc8fee180ddaad29645263310e143a8f7b477c9",
+              "size_bytes": 1795437,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_19.png",
+              "role": "textures",
+              "sha256": "4c62108ad26f09249e095dc935120767f96e0f1b1095c67322a5c9c2f1150df6",
+              "size_bytes": 1848907,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_20.png",
+              "role": "textures",
+              "sha256": "0d5723b238f994b0c317dbd24cba8e5d88a7df04701e66dc85fd63c2269b31b1",
+              "size_bytes": 730496,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_21.png",
+              "role": "textures",
+              "sha256": "febbc871fd230c36e89665d601e00faa80f04a782647305648caf6398b1c0d5e",
+              "size_bytes": 1211955,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_22.png",
+              "role": "textures",
+              "sha256": "1466a60b5fa10c632a775b994c255851806c08bf330801066b354456620118e6",
+              "size_bytes": 1767331,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_23.png",
+              "role": "textures",
+              "sha256": "d38c1af6df485dd3de1f8dc955faa862f3a89085231a608652e26a93a8c747fe",
+              "size_bytes": 555595,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_24.png",
+              "role": "textures",
+              "sha256": "22722aadc03dd12df396caab92da8a98a44f659dec02f82dabbf2fd3b2e09255",
+              "size_bytes": 1362062,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_alpha/enemy_alpha_textures_25.png",
+              "role": "textures",
+              "sha256": "a2872bbef15a3b6fcc7805a9efbcc65cfc8451799614b7a165d06fd3f4d606f4",
+              "size_bytes": 1530770,
+              "format": "png"
+            }
+          ],
+          "created_at": null,
+          "ingested_at": null,
+          "recorded_at": "2026-01-05T10:00:00Z",
+          "promoted_at": null,
+          "git_reference": "31e24c839b288627363499377d692d925dd50b0a",
+          "source": "Synthetic fixture source.",
+          "creator": null,
+          "note": "Synthetic fixture note for rev_enemy_alpha_current. It contains no real project data.",
+          "model": {
+            "triangles": null,
+            "polygons": null,
+            "meshes": null,
+            "materials": null,
+            "textures": null,
+            "skeletons": null,
+            "animations": null
+          },
+          "rig": {
+            "status": "unknown",
+            "scope": "gltf_integrity",
+            "provider": "rigcheck",
+            "reason": "not_applicable",
+            "skeleton": null,
+            "compatible": null,
+            "required_bones": null,
+            "missing_bones": null,
+            "orientation_scale_issues": null,
+            "issues": [],
+            "checked_at": null,
+            "file_sha256": null,
+            "result": null
+          },
+          "technical": {
+            "status": "warning",
+            "issues": [
+              {
+                "code": "DEEP_INSPECTION_UNAVAILABLE",
+                "severity": "warning"
+              }
+            ],
+            "checked_at": "2026-01-05T10:04:00Z"
+          },
+          "technical_issues": [],
+          "supersedes": null,
+          "superseded_by": null,
+          "legacy_in_place": true
+        }
+      ]
+    },
+    {
+      "asset_id": "enemy_benchmark",
+      "display_name": "Enemy Benchmark",
+      "category": "enemies",
+      "canonical_revision": null,
+      "requirements": {
+        "source": false,
+        "runtime": true,
+        "rig_compatibility": false
+      },
+      "revisions": [
+        {
+          "revision_id": "rev_enemy_benchmark_candidate_runtime",
+          "canonical_state": "candidate",
+          "pipeline_status": "animated",
+          "source_path": null,
+          "runtime_path": "assets/enemies/enemy_benchmark/enemy_benchmark_runtime_1.glb",
+          "files": [
+            {
+              "path": "assets/enemies/enemy_benchmark/enemy_benchmark_runtime_1.glb",
+              "role": "runtime",
+              "sha256": "efbe71198476e13ea5c442046e3c86b118dd7d01644a2ee839aa5692348d40a6",
+              "size_bytes": 1373892,
+              "format": "glb"
+            },
+            {
+              "path": "assets/enemies/enemy_benchmark/enemy_benchmark_textures_1.jpg",
+              "role": "textures",
+              "sha256": "ceb509c6d549627318fb0f8b9804789a09df0d045e8c4d4562d92f8cb2021451",
+              "size_bytes": 1095711,
+              "format": "jpg"
+            },
+            {
+              "path": "assets/enemies/enemy_benchmark/enemy_benchmark_textures_2.jpg",
+              "role": "textures",
+              "sha256": "2f798d9c2215fea689859934ef5006c0584023dd4783ea2a2e9978b3cf8a1fca",
+              "size_bytes": 1771920,
+              "format": "jpg"
+            },
+            {
+              "path": "assets/enemies/enemy_benchmark/enemy_benchmark_textures_3.jpg",
+              "role": "textures",
+              "sha256": "f6f9b1444216eb11c46efb1b1d9bc946cef74c0076cc2084a9d4f1c0c127f25e",
+              "size_bytes": 1882070,
+              "format": "jpg"
+            }
+          ],
+          "created_at": null,
+          "ingested_at": null,
+          "recorded_at": "2026-01-05T10:00:00Z",
+          "promoted_at": null,
+          "git_reference": "45f27bed4e66ff78a04e3f227057f5f5186cc75d",
+          "source": "Synthetic fixture source.",
+          "creator": null,
+          "note": "Synthetic fixture note for rev_enemy_benchmark_candidate_runtime. It contains no real project data.",
+          "model": {
+            "triangles": 120000,
+            "polygons": null,
+            "meshes": 1,
+            "materials": [
+              {
+                "index": 0,
+                "name": "material_1"
+              }
+            ],
+            "textures": [
+              {
+                "index": 0,
+                "name": null,
+                "source": 0
+              },
+              {
+                "index": 1,
+                "name": null,
+                "source": 1
+              },
+              {
+                "index": 2,
+                "name": null,
+                "source": 2
+              }
+            ],
+            "skeletons": [
+              {
+                "name": "skeleton_1",
+                "bones": [
+                  "bone_01",
+                  "bone_02",
+                  "bone_03",
+                  "bone_04",
+                  "bone_05",
+                  "bone_06",
+                  "bone_07",
+                  "bone_08",
+                  "bone_09",
+                  "bone_10",
+                  "bone_11",
+                  "bone_12",
+                  "bone_13",
+                  "bone_14",
+                  "bone_15",
+                  "bone_16",
+                  "bone_17",
+                  "bone_18",
+                  "bone_19",
+                  "bone_20",
+                  "bone_21",
+                  "bone_22",
+                  "bone_23",
+                  "bone_24",
+                  "bone_25",
+                  "bone_26",
+                  "bone_27",
+                  "bone_28",
+                  "bone_29",
+                  "bone_30",
+                  "bone_31",
+                  "bone_32",
+                  "bone_33",
+                  "bone_34",
+                  "bone_35",
+                  "bone_36",
+                  "bone_37",
+                  "bone_38",
+                  "bone_39",
+                  "bone_40",
+                  "bone_41",
+                  "bone_42",
+                  "bone_43"
+                ]
+              }
+            ],
+            "animations": [
+              {
+                "index": 0,
+                "name": "clip_1"
+              },
+              {
+                "index": 1,
+                "name": "clip_2"
+              },
+              {
+                "index": 2,
+                "name": "clip_3"
+              }
+            ]
+          },
+          "rig": {
+            "status": "warning",
+            "scope": "gltf_integrity",
+            "provider": "rigcheck",
+            "reason": null,
+            "skeleton": null,
+            "compatible": null,
+            "required_bones": null,
+            "missing_bones": null,
+            "orientation_scale_issues": null,
+            "issues": [
+              {
+                "severity": 1,
+                "code": "NODE_SKINNED_MESH_NON_ROOT",
+                "message": "Node with a skinned mesh is not root. Parent transforms will not affect a skinned mesh.",
+                "pointer": "/nodes/43"
+              }
+            ],
+            "checked_at": "2026-01-05T10:04:00Z",
+            "file_sha256": "efbe71198476e13ea5c442046e3c86b118dd7d01644a2ee839aa5692348d40a6",
+            "result": {
+              "fileType": "glb",
+              "sizeBytes": 1373892,
+              "sha256": "efbe71198476e13ea5c442046e3c86b118dd7d01644a2ee839aa5692348d40a6",
+              "valid": true,
+              "triangles": 120000,
+              "meshes": 1,
+              "bones": 43,
+              "skins": 1,
+              "clips": 3,
+              "validation": {
+                "errorCount": 0,
+                "warningCount": 1,
+                "infoCount": 0,
+                "hintCount": 0,
+                "truncated": false,
+                "messages": [
+                  {
+                    "severity": 1,
+                    "code": "NODE_SKINNED_MESH_NON_ROOT",
+                    "message": "Node with a skinned mesh is not root. Parent transforms will not affect a skinned mesh.",
+                    "pointer": "/nodes/43"
+                  }
+                ]
+              }
+            }
+          },
+          "technical": {
+            "status": "pass",
+            "issues": [],
+            "checked_at": "2026-01-05T10:04:00Z"
+          },
+          "technical_issues": [
+            {
+              "code": "PROVENANCE_MISSING",
+              "severity": "error",
+              "message": "Synthetic error for fixture testing."
+            }
+          ],
+          "supersedes": null,
+          "superseded_by": null,
+          "legacy_in_place": true
+        }
+      ]
+    },
+    {
+      "asset_id": "structure_beta",
+      "display_name": "Structure Beta",
+      "category": "structures",
+      "canonical_revision": "rev_structure_beta_current",
+      "requirements": {
+        "source": false,
+        "runtime": true,
+        "rig_compatibility": false
+      },
+      "revisions": [
+        {
+          "revision_id": "rev_structure_beta_current",
+          "canonical_state": "canonical",
+          "pipeline_status": null,
+          "source_path": null,
+          "runtime_path": "assets/structures/structure_beta/structure_beta_textures_1.png",
+          "files": [
+            {
+              "path": "assets/structures/structure_beta/structure_beta_textures_1.png",
+              "role": "textures",
+              "sha256": "ffd03c0b1b612a08b10511871ffd6c60b428f7bf680e7b4bc0309631966180dc",
+              "size_bytes": 1803799,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_beta/structure_beta_textures_2.png",
+              "role": "textures",
+              "sha256": "cad7dc869a39bf85cbc0c97c976f9bbb5b644d4c84f9d184358e8aa65c382da4",
+              "size_bytes": 1438034,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_beta/structure_beta_textures_3.png",
+              "role": "textures",
+              "sha256": "ae56cfa1daf8c57a8e212fc1599a01ced4c5a2221577cc85c9c408da0bbdd475",
+              "size_bytes": 368301,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_beta/structure_beta_textures_4.png",
+              "role": "textures",
+              "sha256": "582876991163cbc6327bb35db875de45c102b143977ea2f5842659e7de08309d",
+              "size_bytes": 1696221,
+              "format": "png"
+            }
+          ],
+          "created_at": null,
+          "ingested_at": null,
+          "recorded_at": "2026-01-05T10:00:00Z",
+          "promoted_at": null,
+          "git_reference": "4d3800af0668ae7b9cce93cf415fd64704ca15fc",
+          "source": null,
+          "creator": null,
+          "note": "Synthetic fixture note for rev_structure_beta_current. It contains no real project data.",
+          "model": {
+            "triangles": null,
+            "polygons": null,
+            "meshes": null,
+            "materials": null,
+            "textures": null,
+            "skeletons": null,
+            "animations": null
+          },
+          "rig": {
+            "status": "unknown",
+            "scope": "gltf_integrity",
+            "provider": "rigcheck",
+            "reason": "not_applicable",
+            "skeleton": null,
+            "compatible": null,
+            "required_bones": null,
+            "missing_bones": null,
+            "orientation_scale_issues": null,
+            "issues": [],
+            "checked_at": null,
+            "file_sha256": null,
+            "result": null
+          },
+          "technical": {
+            "status": "warning",
+            "issues": [
+              {
+                "code": "DEEP_INSPECTION_UNAVAILABLE",
+                "severity": "warning"
+              }
+            ],
+            "checked_at": "2026-01-05T10:04:00Z"
+          },
+          "technical_issues": [],
+          "supersedes": null,
+          "superseded_by": null,
+          "legacy_in_place": true
+        }
+      ]
+    },
+    {
+      "asset_id": "structure_gamma",
+      "display_name": "Structure Gamma",
+      "category": "structures",
+      "canonical_revision": "rev_structure_gamma_current",
+      "requirements": {
+        "source": false,
+        "runtime": true,
+        "rig_compatibility": false
+      },
+      "revisions": [
+        {
+          "revision_id": "rev_structure_gamma_current",
+          "canonical_state": "canonical",
+          "pipeline_status": null,
+          "source_path": null,
+          "runtime_path": "assets/structures/structure_gamma/structure_gamma_textures_1.png",
+          "files": [
+            {
+              "path": "assets/structures/structure_gamma/structure_gamma_textures_1.png",
+              "role": "textures",
+              "sha256": "4d2168975a80e1be2274d15b0bcd1633aa60bb0052f3cfdac25a09444993c4df",
+              "size_bytes": 1435902,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_gamma/structure_gamma_textures_2.png",
+              "role": "textures",
+              "sha256": "8b0cc5f59663f97370f8aef537db0d518b470e51c40d22d52f66c3f728f32f9a",
+              "size_bytes": 13645,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_gamma/structure_gamma_textures_3.png",
+              "role": "textures",
+              "sha256": "140239ca4eec7d6f4deafb487dcb61128bad6dbf8fe438a33d0e317a006b7720",
+              "size_bytes": 1563993,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_gamma/structure_gamma_textures_4.png",
+              "role": "textures",
+              "sha256": "6f98299737c60f7d3920b47bf49fbe4ea4b7eefbe652a5d3d29410a3a408ced3",
+              "size_bytes": 1375584,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_gamma/structure_gamma_textures_5.png",
+              "role": "textures",
+              "sha256": "a7c70d053868d3d0ceccd20b2bbc28c314a8d38dc3a77255aba165dca0208c11",
+              "size_bytes": 1690038,
+              "format": "png"
+            }
+          ],
+          "created_at": null,
+          "ingested_at": null,
+          "recorded_at": "2026-01-05T10:00:00Z",
+          "promoted_at": null,
+          "git_reference": "829d76172ea96f20ff748265865bc3709fed49f5",
+          "source": null,
+          "creator": null,
+          "note": "Synthetic fixture note for rev_structure_gamma_current. It contains no real project data.",
+          "model": {
+            "triangles": null,
+            "polygons": null,
+            "meshes": null,
+            "materials": null,
+            "textures": null,
+            "skeletons": null,
+            "animations": null
+          },
+          "rig": {
+            "status": "unknown",
+            "scope": "gltf_integrity",
+            "provider": "rigcheck",
+            "reason": "not_applicable",
+            "skeleton": null,
+            "compatible": null,
+            "required_bones": null,
+            "missing_bones": null,
+            "orientation_scale_issues": null,
+            "issues": [],
+            "checked_at": null,
+            "file_sha256": null,
+            "result": null
+          },
+          "technical": {
+            "status": "warning",
+            "issues": [
+              {
+                "code": "DEEP_INSPECTION_UNAVAILABLE",
+                "severity": "warning"
+              }
+            ],
+            "checked_at": "2026-01-05T10:04:00Z"
+          },
+          "technical_issues": [],
+          "supersedes": null,
+          "superseded_by": null,
+          "legacy_in_place": true
+        }
+      ]
+    },
+    {
+      "asset_id": "structure_delta",
+      "display_name": "Structure Delta",
+      "category": "structures",
+      "canonical_revision": "rev_structure_delta_current",
+      "requirements": {
+        "source": false,
+        "runtime": true,
+        "rig_compatibility": false
+      },
+      "revisions": [
+        {
+          "revision_id": "rev_structure_delta_current",
+          "canonical_state": "canonical",
+          "pipeline_status": null,
+          "source_path": null,
+          "runtime_path": "assets/structures/structure_delta/structure_delta_textures_1.png",
+          "files": [
+            {
+              "path": "assets/structures/structure_delta/structure_delta_textures_1.png",
+              "role": "textures",
+              "sha256": "5d9a13985177c082cff83cf7996ed534197a383241f90852e02522c119c11e04",
+              "size_bytes": 55977,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_delta/structure_delta_textures_2.png",
+              "role": "textures",
+              "sha256": "4e0c346f7154349f001779b062bbfe23df7ad8a26572921233eb7b58079ac330",
+              "size_bytes": 1288136,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_delta/structure_delta_textures_3.png",
+              "role": "textures",
+              "sha256": "ea64fb3960b7bd9c47a33e4a01b69e9f3b53621d6af91993c1d558633cf437b1",
+              "size_bytes": 82126,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_delta/structure_delta_textures_4.png",
+              "role": "textures",
+              "sha256": "c95e133e461356135f1fa7c05121ea7cddca04e67db657d64ae5b47c04b7da8e",
+              "size_bytes": 11175,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_delta/structure_delta_textures_5.png",
+              "role": "textures",
+              "sha256": "489e69723a97bdf474b36cc0b4996aa6b56517aee96484bb4ede06b4b06a0353",
+              "size_bytes": 658584,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_delta/structure_delta_textures_6.png",
+              "role": "textures",
+              "sha256": "c9101671a9fb8cf5e6d755d8b1bafa2408b595c3af6b72286c6090ffe605c4c2",
+              "size_bytes": 153056,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_delta/structure_delta_textures_7.png",
+              "role": "textures",
+              "sha256": "d26247a8043dafcf46b2114a885ddb68afc42965f28a02ac87afa267535efdd9",
+              "size_bytes": 291669,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_delta/structure_delta_textures_8.png",
+              "role": "textures",
+              "sha256": "db3df4f7cf45d3aadf68c2eafae087a190199cdf3d08dd10330484ca09db6b0a",
+              "size_bytes": 1384378,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_delta/structure_delta_textures_9.png",
+              "role": "textures",
+              "sha256": "5c1f87b956aea91ae561c05ca19fa2ac88ee3a1c537676558a5322b9d443ae93",
+              "size_bytes": 1159235,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_delta/structure_delta_textures_10.png",
+              "role": "textures",
+              "sha256": "af31d51a0ebeafe0b1eda891703b63bc26c1ba0f770942408cff9c6935142d42",
+              "size_bytes": 95233,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_delta/structure_delta_textures_11.png",
+              "role": "textures",
+              "sha256": "39ab33bc4312fce2d39a52f2b2f04f4d118b8a2519b9cd90f5a872c6b15f85ce",
+              "size_bytes": 311829,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_delta/structure_delta_textures_12.png",
+              "role": "textures",
+              "sha256": "1085fda6e91d29e62b2397c01595c34d555f07f6cd261cd6b0f3435b5538b284",
+              "size_bytes": 957838,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_delta/structure_delta_textures_13.png",
+              "role": "textures",
+              "sha256": "65184c871559a26a3de13a5f6e4a8551cc7591029431e6e527ad5ba40bbce824",
+              "size_bytes": 1855465,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_delta/structure_delta_textures_14.png",
+              "role": "textures",
+              "sha256": "960a4528c192f50cec8060a2f5fe3c5560c770e2deb29f87b4fe9175408ffba8",
+              "size_bytes": 1403755,
+              "format": "png"
+            }
+          ],
+          "created_at": null,
+          "ingested_at": null,
+          "recorded_at": "2026-01-05T10:00:00Z",
+          "promoted_at": null,
+          "git_reference": "d24ff9b60b35eb523907ae6aee30f442eb30492b",
+          "source": null,
+          "creator": null,
+          "note": "Synthetic fixture note for rev_structure_delta_current. It contains no real project data.",
+          "model": {
+            "triangles": null,
+            "polygons": null,
+            "meshes": null,
+            "materials": null,
+            "textures": null,
+            "skeletons": null,
+            "animations": null
+          },
+          "rig": {
+            "status": "unknown",
+            "scope": "gltf_integrity",
+            "provider": "rigcheck",
+            "reason": "not_applicable",
+            "skeleton": null,
+            "compatible": null,
+            "required_bones": null,
+            "missing_bones": null,
+            "orientation_scale_issues": null,
+            "issues": [],
+            "checked_at": null,
+            "file_sha256": null,
+            "result": null
+          },
+          "technical": {
+            "status": "warning",
+            "issues": [
+              {
+                "code": "DEEP_INSPECTION_UNAVAILABLE",
+                "severity": "warning"
+              }
+            ],
+            "checked_at": "2026-01-05T10:05:00Z"
+          },
+          "technical_issues": [],
+          "supersedes": null,
+          "superseded_by": null,
+          "legacy_in_place": true
+        }
+      ]
+    },
+    {
+      "asset_id": "operator_alpha",
+      "display_name": "Operator Alpha",
+      "category": "operators",
+      "canonical_revision": "rev_operator_alpha_current",
+      "requirements": {
+        "source": false,
+        "runtime": true,
+        "rig_compatibility": false
+      },
+      "revisions": [
+        {
+          "revision_id": "rev_operator_alpha_candidate_runtime",
+          "canonical_state": "candidate",
+          "pipeline_status": "animated",
+          "source_path": null,
+          "runtime_path": "assets/operators/operator_alpha/operator_alpha_runtime_1.glb",
+          "files": [
+            {
+              "path": "assets/operators/operator_alpha/operator_alpha_runtime_1.glb",
+              "role": "runtime",
+              "sha256": "f754cacfafcf2ae3ddacd69a57072a0fded73bbee51083f0b39a718893bed6e1",
+              "size_bytes": 1540493,
+              "format": "glb"
+            },
+            {
+              "path": "assets/operators/operator_alpha/operator_alpha_textures_1.jpg",
+              "role": "textures",
+              "sha256": "d6ec8d50bbccb4fd4007e1dc1a0ce1367a9b7fdf52280dee9e1cf232c6b6b2fe",
+              "size_bytes": 790241,
+              "format": "jpg"
+            },
+            {
+              "path": "assets/operators/operator_alpha/operator_alpha_textures_2.jpg",
+              "role": "textures",
+              "sha256": "13c91e1bf1e2607ff774db5ebe72bc42ea22e923b5d603eccee8d586c1447f22",
+              "size_bytes": 1159013,
+              "format": "jpg"
+            },
+            {
+              "path": "assets/operators/operator_alpha/operator_alpha_textures_3.jpg",
+              "role": "textures",
+              "sha256": "a0ec0d8a2ac1834c299a31f0827623c332c4e9d86eb8ce5ea71070b4c0f56b5d",
+              "size_bytes": 1408792,
+              "format": "jpg"
+            }
+          ],
+          "created_at": null,
+          "ingested_at": null,
+          "recorded_at": "2026-01-05T10:01:00Z",
+          "promoted_at": null,
+          "git_reference": "0ef99a96910a9c3103e4fbadf3290cb4589e7bab",
+          "source": "Synthetic fixture source.",
+          "creator": "Example Creator",
+          "note": "Synthetic fixture note for rev_operator_alpha_candidate_runtime. It contains no real project data.",
+          "model": {
+            "triangles": 3000,
+            "polygons": null,
+            "meshes": 1,
+            "materials": [
+              {
+                "index": 0,
+                "name": "material_1"
+              }
+            ],
+            "textures": [
+              {
+                "index": 0,
+                "name": null,
+                "source": 0
+              },
+              {
+                "index": 1,
+                "name": null,
+                "source": 1
+              },
+              {
+                "index": 2,
+                "name": null,
+                "source": 2
+              }
+            ],
+            "skeletons": [
+              {
+                "name": "skeleton_1",
+                "bones": [
+                  "bone_01",
+                  "bone_02",
+                  "bone_03",
+                  "bone_04",
+                  "bone_05",
+                  "bone_06",
+                  "bone_07",
+                  "bone_08",
+                  "bone_09",
+                  "bone_10",
+                  "bone_11",
+                  "bone_12",
+                  "bone_13",
+                  "bone_14",
+                  "bone_15",
+                  "bone_16",
+                  "bone_17",
+                  "bone_18",
+                  "bone_19",
+                  "bone_20",
+                  "bone_21",
+                  "bone_22",
+                  "bone_23"
+                ]
+              }
+            ],
+            "animations": [
+              {
+                "index": 0,
+                "name": "clip_1"
+              }
+            ]
+          },
+          "rig": {
+            "status": "warning",
+            "scope": "gltf_integrity",
+            "provider": "rigcheck",
+            "reason": null,
+            "skeleton": null,
+            "compatible": null,
+            "required_bones": null,
+            "missing_bones": null,
+            "orientation_scale_issues": null,
+            "issues": [
+              {
+                "severity": 1,
+                "code": "MESH_PRIMITIVE_GENERATED_TANGENT_SPACE",
+                "message": "Material requires a tangent space but the mesh primitive does not provide it. Runtime-generated tangent space may be non-portable across implementations.",
+                "pointer": "/meshes/0/primitives/0/material"
+              },
+              {
+                "severity": 1,
+                "code": "NODE_SKINNED_MESH_NON_ROOT",
+                "message": "Node with a skinned mesh is not root. Parent transforms will not affect a skinned mesh.",
+                "pointer": "/nodes/23"
+              }
+            ],
+            "checked_at": "2026-01-05T10:06:00Z",
+            "file_sha256": "f754cacfafcf2ae3ddacd69a57072a0fded73bbee51083f0b39a718893bed6e1",
+            "result": {
+              "fileType": "glb",
+              "sizeBytes": 1540493,
+              "sha256": "f754cacfafcf2ae3ddacd69a57072a0fded73bbee51083f0b39a718893bed6e1",
+              "valid": true,
+              "triangles": 3000,
+              "meshes": 1,
+              "bones": 23,
+              "skins": 1,
+              "clips": 1,
+              "validation": {
+                "errorCount": 0,
+                "warningCount": 2,
+                "infoCount": 0,
+                "hintCount": 0,
+                "truncated": false,
+                "messages": [
+                  {
+                    "severity": 1,
+                    "code": "MESH_PRIMITIVE_GENERATED_TANGENT_SPACE",
+                    "message": "Material requires a tangent space but the mesh primitive does not provide it. Runtime-generated tangent space may be non-portable across implementations.",
+                    "pointer": "/meshes/0/primitives/0/material"
+                  },
+                  {
+                    "severity": 1,
+                    "code": "NODE_SKINNED_MESH_NON_ROOT",
+                    "message": "Node with a skinned mesh is not root. Parent transforms will not affect a skinned mesh.",
+                    "pointer": "/nodes/23"
+                  }
+                ]
+              }
+            }
+          },
+          "technical": {
+            "status": "pass",
+            "issues": [],
+            "checked_at": "2026-01-05T10:06:00Z"
+          },
+          "technical_issues": [
+            {
+              "code": "TRIANGLE_BUDGET_PENDING",
+              "severity": "warning",
+              "message": "Synthetic warning for fixture testing."
+            }
+          ],
+          "supersedes": null,
+          "superseded_by": null,
+          "legacy_in_place": true
+        },
+        {
+          "revision_id": "rev_operator_alpha_candidate_source",
+          "canonical_state": "candidate",
+          "pipeline_status": "rigged",
+          "source_path": "assets/operators/operator_alpha/operator_alpha_source_1.glb",
+          "runtime_path": null,
+          "files": [
+            {
+              "path": "assets/operators/operator_alpha/operator_alpha_source_1.glb",
+              "role": "source",
+              "sha256": "66843d1735b41af4599bf7648fcd18eefdc852e2966fc2b00dfd8f531d45a695",
+              "size_bytes": 14621,
+              "format": "glb"
+            },
+            {
+              "path": "assets/operators/operator_alpha/operator_alpha_textures_4.jpg",
+              "role": "textures",
+              "sha256": "d6ec8d50bbccb4fd4007e1dc1a0ce1367a9b7fdf52280dee9e1cf232c6b6b2fe",
+              "size_bytes": 790241,
+              "format": "jpg"
+            },
+            {
+              "path": "assets/operators/operator_alpha/operator_alpha_textures_5.jpg",
+              "role": "textures",
+              "sha256": "13c91e1bf1e2607ff774db5ebe72bc42ea22e923b5d603eccee8d586c1447f22",
+              "size_bytes": 1159013,
+              "format": "jpg"
+            },
+            {
+              "path": "assets/operators/operator_alpha/operator_alpha_textures_6.jpg",
+              "role": "textures",
+              "sha256": "a0ec0d8a2ac1834c299a31f0827623c332c4e9d86eb8ce5ea71070b4c0f56b5d",
+              "size_bytes": 1408792,
+              "format": "jpg"
+            }
+          ],
+          "created_at": null,
+          "ingested_at": null,
+          "recorded_at": "2026-01-05T10:02:00Z",
+          "promoted_at": null,
+          "git_reference": null,
+          "source": "Synthetic fixture source.",
+          "creator": null,
+          "note": "Synthetic fixture note for rev_operator_alpha_candidate_source. It contains no real project data.",
+          "model": {
+            "triangles": 3000,
+            "polygons": null,
+            "meshes": 1,
+            "materials": [
+              {
+                "index": 0,
+                "name": "material_1"
+              }
+            ],
+            "textures": [
+              {
+                "index": 0,
+                "name": null,
+                "source": 0
+              },
+              {
+                "index": 1,
+                "name": null,
+                "source": 1
+              },
+              {
+                "index": 2,
+                "name": null,
+                "source": 2
+              }
+            ],
+            "skeletons": [
+              {
+                "name": "skeleton_1",
+                "bones": [
+                  "bone_01",
+                  "bone_02",
+                  "bone_03",
+                  "bone_04",
+                  "bone_05",
+                  "bone_06",
+                  "bone_07",
+                  "bone_08",
+                  "bone_09",
+                  "bone_10",
+                  "bone_11",
+                  "bone_12",
+                  "bone_13",
+                  "bone_14",
+                  "bone_15",
+                  "bone_16",
+                  "bone_17",
+                  "bone_18",
+                  "bone_19",
+                  "bone_20",
+                  "bone_21",
+                  "bone_22",
+                  "bone_23"
+                ]
+              }
+            ],
+            "animations": []
+          },
+          "rig": {
+            "status": "warning",
+            "scope": "gltf_integrity",
+            "provider": "rigcheck",
+            "reason": null,
+            "skeleton": null,
+            "compatible": null,
+            "required_bones": null,
+            "missing_bones": null,
+            "orientation_scale_issues": null,
+            "issues": [
+              {
+                "severity": 1,
+                "code": "MESH_PRIMITIVE_GENERATED_TANGENT_SPACE",
+                "message": "Material requires a tangent space but the mesh primitive does not provide it. Runtime-generated tangent space may be non-portable across implementations.",
+                "pointer": "/meshes/0/primitives/0/material"
+              },
+              {
+                "severity": 1,
+                "code": "NODE_SKINNED_MESH_NON_ROOT",
+                "message": "Node with a skinned mesh is not root. Parent transforms will not affect a skinned mesh.",
+                "pointer": "/nodes/23"
+              }
+            ],
+            "checked_at": "2026-01-05T10:07:00Z",
+            "file_sha256": "66843d1735b41af4599bf7648fcd18eefdc852e2966fc2b00dfd8f531d45a695",
+            "result": {
+              "fileType": "glb",
+              "sizeBytes": 14621,
+              "sha256": "66843d1735b41af4599bf7648fcd18eefdc852e2966fc2b00dfd8f531d45a695",
+              "valid": true,
+              "triangles": 3000,
+              "meshes": 1,
+              "bones": 23,
+              "skins": 1,
+              "clips": 0,
+              "validation": {
+                "errorCount": 0,
+                "warningCount": 2,
+                "infoCount": 0,
+                "hintCount": 0,
+                "truncated": false,
+                "messages": [
+                  {
+                    "severity": 1,
+                    "code": "MESH_PRIMITIVE_GENERATED_TANGENT_SPACE",
+                    "message": "Material requires a tangent space but the mesh primitive does not provide it. Runtime-generated tangent space may be non-portable across implementations.",
+                    "pointer": "/meshes/0/primitives/0/material"
+                  },
+                  {
+                    "severity": 1,
+                    "code": "NODE_SKINNED_MESH_NON_ROOT",
+                    "message": "Node with a skinned mesh is not root. Parent transforms will not affect a skinned mesh.",
+                    "pointer": "/nodes/23"
+                  }
+                ]
+              }
+            }
+          },
+          "technical": {
+            "status": "pass",
+            "issues": [],
+            "checked_at": "2026-01-05T10:07:00Z"
+          },
+          "technical_issues": [
+            {
+              "code": "TRIANGLE_BUDGET_PENDING",
+              "severity": "warning",
+              "message": "Synthetic warning for fixture testing."
+            }
+          ],
+          "supersedes": null,
+          "superseded_by": null,
+          "legacy_in_place": true
+        },
+        {
+          "revision_id": "rev_operator_alpha_current",
+          "canonical_state": "canonical",
+          "pipeline_status": "animated",
+          "source_path": null,
+          "runtime_path": "assets/operators/operator_alpha/operator_alpha_runtime_2.glb",
+          "files": [
+            {
+              "path": "assets/operators/operator_alpha/operator_alpha_runtime_2.glb",
+              "role": "runtime",
+              "sha256": "7ac3563c4d9866426473afa40911bb975b284c3b2c1fd38fa3c006accb835c64",
+              "size_bytes": 303664,
+              "format": "glb"
+            },
+            {
+              "path": "assets/operators/operator_alpha/operator_alpha_textures_7.jpg",
+              "role": "textures",
+              "sha256": "d6ec8d50bbccb4fd4007e1dc1a0ce1367a9b7fdf52280dee9e1cf232c6b6b2fe",
+              "size_bytes": 790241,
+              "format": "jpg"
+            },
+            {
+              "path": "assets/operators/operator_alpha/operator_alpha_textures_8.jpg",
+              "role": "textures",
+              "sha256": "13c91e1bf1e2607ff774db5ebe72bc42ea22e923b5d603eccee8d586c1447f22",
+              "size_bytes": 1159013,
+              "format": "jpg"
+            },
+            {
+              "path": "assets/operators/operator_alpha/operator_alpha_textures_9.jpg",
+              "role": "textures",
+              "sha256": "a0ec0d8a2ac1834c299a31f0827623c332c4e9d86eb8ce5ea71070b4c0f56b5d",
+              "size_bytes": 1408792,
+              "format": "jpg"
+            }
+          ],
+          "created_at": null,
+          "ingested_at": null,
+          "recorded_at": "2026-01-05T10:03:00Z",
+          "promoted_at": null,
+          "git_reference": "13b49c3d5c753b762a012af98b88455d7d3c3727",
+          "source": "Synthetic fixture source.",
+          "creator": "Example Creator",
+          "note": "Synthetic fixture note for rev_operator_alpha_current. It contains no real project data.",
+          "model": {
+            "triangles": 3000,
+            "polygons": null,
+            "meshes": 1,
+            "materials": [
+              {
+                "index": 0,
+                "name": "material_1"
+              }
+            ],
+            "textures": [
+              {
+                "index": 0,
+                "name": null,
+                "source": 0
+              },
+              {
+                "index": 1,
+                "name": null,
+                "source": 1
+              },
+              {
+                "index": 2,
+                "name": null,
+                "source": 2
+              }
+            ],
+            "skeletons": [
+              {
+                "name": "skeleton_1",
+                "bones": [
+                  "bone_01",
+                  "bone_02",
+                  "bone_03",
+                  "bone_04",
+                  "bone_05",
+                  "bone_06",
+                  "bone_07",
+                  "bone_08",
+                  "bone_09",
+                  "bone_10",
+                  "bone_11",
+                  "bone_12",
+                  "bone_13",
+                  "bone_14",
+                  "bone_15",
+                  "bone_16",
+                  "bone_17",
+                  "bone_18",
+                  "bone_19",
+                  "bone_20",
+                  "bone_21",
+                  "bone_22",
+                  "bone_23"
+                ]
+              }
+            ],
+            "animations": [
+              {
+                "index": 0,
+                "name": "clip_1"
+              }
+            ]
+          },
+          "rig": {
+            "status": "warning",
+            "scope": "gltf_integrity",
+            "provider": "rigcheck",
+            "reason": null,
+            "skeleton": null,
+            "compatible": null,
+            "required_bones": null,
+            "missing_bones": null,
+            "orientation_scale_issues": null,
+            "issues": [
+              {
+                "severity": 1,
+                "code": "MESH_PRIMITIVE_GENERATED_TANGENT_SPACE",
+                "message": "Material requires a tangent space but the mesh primitive does not provide it. Runtime-generated tangent space may be non-portable across implementations.",
+                "pointer": "/meshes/0/primitives/0/material"
+              },
+              {
+                "severity": 1,
+                "code": "NODE_SKINNED_MESH_NON_ROOT",
+                "message": "Node with a skinned mesh is not root. Parent transforms will not affect a skinned mesh.",
+                "pointer": "/nodes/23"
+              }
+            ],
+            "checked_at": "2026-01-05T10:08:00Z",
+            "file_sha256": "7ac3563c4d9866426473afa40911bb975b284c3b2c1fd38fa3c006accb835c64",
+            "result": {
+              "fileType": "glb",
+              "sizeBytes": 303664,
+              "sha256": "7ac3563c4d9866426473afa40911bb975b284c3b2c1fd38fa3c006accb835c64",
+              "valid": true,
+              "triangles": 3000,
+              "meshes": 1,
+              "bones": 23,
+              "skins": 1,
+              "clips": 1,
+              "validation": {
+                "errorCount": 0,
+                "warningCount": 2,
+                "infoCount": 0,
+                "hintCount": 0,
+                "truncated": false,
+                "messages": [
+                  {
+                    "severity": 1,
+                    "code": "MESH_PRIMITIVE_GENERATED_TANGENT_SPACE",
+                    "message": "Material requires a tangent space but the mesh primitive does not provide it. Runtime-generated tangent space may be non-portable across implementations.",
+                    "pointer": "/meshes/0/primitives/0/material"
+                  },
+                  {
+                    "severity": 1,
+                    "code": "NODE_SKINNED_MESH_NON_ROOT",
+                    "message": "Node with a skinned mesh is not root. Parent transforms will not affect a skinned mesh.",
+                    "pointer": "/nodes/23"
+                  }
+                ]
+              }
+            }
+          },
+          "technical": {
+            "status": "pass",
+            "issues": [],
+            "checked_at": "2026-01-05T10:08:00Z"
+          },
+          "technical_issues": [
+            {
+              "code": "TRIANGLE_BUDGET_PENDING",
+              "severity": "warning",
+              "message": "Synthetic warning for fixture testing."
+            }
+          ],
+          "supersedes": null,
+          "superseded_by": null,
+          "legacy_in_place": true
+        }
+      ]
+    },
+    {
+      "asset_id": "ui_alpha",
+      "display_name": "Ui Alpha",
+      "category": "ui",
+      "canonical_revision": "rev_ui_alpha_current",
+      "requirements": {
+        "source": false,
+        "runtime": true,
+        "rig_compatibility": false
+      },
+      "revisions": [
+        {
+          "revision_id": "rev_ui_alpha_current",
+          "canonical_state": "canonical",
+          "pipeline_status": null,
+          "source_path": null,
+          "runtime_path": "assets/ui/ui_alpha/ui_alpha_runtime_1.jpg",
+          "files": [
+            {
+              "path": "assets/ui/ui_alpha/ui_alpha_runtime_1.ttf",
+              "role": "runtime",
+              "sha256": "a942ac0bdba2c523f3a1bf571d547caf28e90444f2281ad0ee720f4d66bbc30c",
+              "size_bytes": 1548405,
+              "format": "ttf"
+            },
+            {
+              "path": "assets/ui/ui_alpha/ui_alpha_runtime_1.jpg",
+              "role": "runtime",
+              "sha256": "59e3d524e236cfed3b0ea13d919248fca5300d16a7f952aa6fb0386f5e3b36d4",
+              "size_bytes": 1064402,
+              "format": "jpg"
+            }
+          ],
+          "created_at": null,
+          "ingested_at": null,
+          "recorded_at": "2026-01-05T10:03:00Z",
+          "promoted_at": null,
+          "git_reference": null,
+          "source": "Synthetic fixture source.",
+          "creator": null,
+          "note": "Synthetic fixture note for rev_ui_alpha_current. It contains no real project data.",
+          "model": {
+            "triangles": null,
+            "polygons": null,
+            "meshes": null,
+            "materials": null,
+            "textures": null,
+            "skeletons": null,
+            "animations": null
+          },
+          "rig": {
+            "status": "unknown",
+            "scope": "gltf_integrity",
+            "provider": "rigcheck",
+            "reason": "not_applicable",
+            "skeleton": null,
+            "compatible": null,
+            "required_bones": null,
+            "missing_bones": null,
+            "orientation_scale_issues": null,
+            "issues": [],
+            "checked_at": null,
+            "file_sha256": null,
+            "result": null
+          },
+          "technical": {
+            "status": "warning",
+            "issues": [
+              {
+                "code": "DEEP_INSPECTION_UNAVAILABLE",
+                "severity": "warning"
+              }
+            ],
+            "checked_at": "2026-01-05T10:08:00Z"
+          },
+          "technical_issues": [],
+          "supersedes": null,
+          "superseded_by": null,
+          "legacy_in_place": true
+        }
+      ]
+    },
+    {
+      "asset_id": "structure_epsilon",
+      "display_name": "Structure Epsilon",
+      "category": "structures",
+      "canonical_revision": "rev_structure_epsilon_current",
+      "requirements": {
+        "source": false,
+        "runtime": true,
+        "rig_compatibility": false
+      },
+      "revisions": [
+        {
+          "revision_id": "rev_structure_epsilon_current",
+          "canonical_state": "canonical",
+          "pipeline_status": null,
+          "source_path": "assets/structures/structure_epsilon/structure_epsilon_source_2.png",
+          "runtime_path": "assets/structures/structure_epsilon/structure_epsilon_textures_1.png",
+          "files": [
+            {
+              "path": "assets/structures/structure_epsilon/structure_epsilon_textures_1.png",
+              "role": "textures",
+              "sha256": "d95c8cd284ca0c857baf63120ce0428ba4ad6494a601f62f9a2b5db8b059b816",
+              "size_bytes": 1850939,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_epsilon/structure_epsilon_textures_2.png",
+              "role": "textures",
+              "sha256": "75830104ba20be74ead74ca6fceaba334a9fa0ec0b0bc644f22beb85ef7decf8",
+              "size_bytes": 727283,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_epsilon/structure_epsilon_textures_3.png",
+              "role": "textures",
+              "sha256": "decc3d54c1b19fb6d90d86160a637911842d17dea3bc2cda410378d0097a331c",
+              "size_bytes": 1626160,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_epsilon/structure_epsilon_textures_4.png",
+              "role": "textures",
+              "sha256": "fccc5fe1eb765f7431c69dd793327dca897726c876e068f80fcf23771dcb781c",
+              "size_bytes": 1592353,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_epsilon/structure_epsilon_textures_5.png",
+              "role": "textures",
+              "sha256": "8bfd06d05f49984a308c48a90a3d256b0c056d345c84c35b875aa29587306dd7",
+              "size_bytes": 1502940,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_epsilon/structure_epsilon_textures_6.png",
+              "role": "textures",
+              "sha256": "13d68ed181522f7b846f798244a03a7a67c0e984e269887652a7f9e0fa957c16",
+              "size_bytes": 559334,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_epsilon/structure_epsilon_textures_7.png",
+              "role": "textures",
+              "sha256": "24325457c1dff05f0d803e8705af31c9f193a1638c135283fb4a3f80f92b309c",
+              "size_bytes": 1961087,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_epsilon/structure_epsilon_source_1.png",
+              "role": "source",
+              "sha256": "543dc6e5d24d3cce5567ddbbbe809abc9a559c0a2afed68db97e105bdbc5faf5",
+              "size_bytes": 1877546,
+              "format": "png"
+            },
+            {
+              "path": "assets/structures/structure_epsilon/structure_epsilon_source_2.png",
+              "role": "source",
+              "sha256": "6fba1060dfc96beddaab6bc532aa78d06e08bc61cfc9eb42dc2e5864205de8fe",
+              "size_bytes": 925385,
+              "format": "png"
+            }
+          ],
+          "created_at": null,
+          "ingested_at": null,
+          "recorded_at": "2026-01-05T10:03:00Z",
+          "promoted_at": null,
+          "git_reference": "3df252b944300824f3cec5ab6a4e0fcc616a3f58",
+          "source": null,
+          "creator": null,
+          "note": "Synthetic fixture note for rev_structure_epsilon_current. It contains no real project data.",
+          "model": {
+            "triangles": null,
+            "polygons": null,
+            "meshes": null,
+            "materials": null,
+            "textures": null,
+            "skeletons": null,
+            "animations": null
+          },
+          "rig": {
+            "status": "unknown",
+            "scope": "gltf_integrity",
+            "provider": "rigcheck",
+            "reason": "not_applicable",
+            "skeleton": null,
+            "compatible": null,
+            "required_bones": null,
+            "missing_bones": null,
+            "orientation_scale_issues": null,
+            "issues": [],
+            "checked_at": null,
+            "file_sha256": null,
+            "result": null
+          },
+          "technical": {
+            "status": "warning",
+            "issues": [
+              {
+                "code": "DEEP_INSPECTION_UNAVAILABLE",
+                "severity": "warning"
+              }
+            ],
+            "checked_at": "2026-01-05T10:08:00Z"
+          },
+          "technical_issues": [],
+          "supersedes": null,
+          "superseded_by": null,
+          "legacy_in_place": true
+        }
+      ]
+    },
+    {
+      "asset_id": "enemy_beta",
+      "display_name": "Enemy Beta",
+      "category": "enemies",
+      "canonical_revision": "rev_enemy_beta_current",
+      "requirements": {
+        "source": false,
+        "runtime": true,
+        "rig_compatibility": false
+      },
+      "revisions": [
+        {
+          "revision_id": "rev_enemy_beta_current",
+          "canonical_state": "canonical",
+          "pipeline_status": null,
+          "source_path": null,
+          "runtime_path": "assets/enemies/enemy_beta/enemy_beta_textures_1.png",
+          "files": [
+            {
+              "path": "assets/enemies/enemy_beta/enemy_beta_textures_1.png",
+              "role": "textures",
+              "sha256": "e49062f24a7e3a7739fd59da8aaeb552a6d6da3b0e6a8258032a386147fee52c",
+              "size_bytes": 198311,
+              "format": "png"
+            }
+          ],
+          "created_at": null,
+          "ingested_at": null,
+          "recorded_at": "2026-01-05T10:03:00Z",
+          "promoted_at": null,
+          "git_reference": "ebe057a91d7f724b34da1c20c8b3b9fc72c70d59",
+          "source": null,
+          "creator": null,
+          "note": "Synthetic fixture note for rev_enemy_beta_current. It contains no real project data.",
+          "model": {
+            "triangles": null,
+            "polygons": null,
+            "meshes": null,
+            "materials": null,
+            "textures": null,
+            "skeletons": null,
+            "animations": null
+          },
+          "rig": {
+            "status": "unknown",
+            "scope": "gltf_integrity",
+            "provider": "rigcheck",
+            "reason": "not_applicable",
+            "skeleton": null,
+            "compatible": null,
+            "required_bones": null,
+            "missing_bones": null,
+            "orientation_scale_issues": null,
+            "issues": [],
+            "checked_at": null,
+            "file_sha256": null,
+            "result": null
+          },
+          "technical": {
+            "status": "warning",
+            "issues": [
+              {
+                "code": "DEEP_INSPECTION_UNAVAILABLE",
+                "severity": "warning"
+              }
+            ],
+            "checked_at": "2026-01-05T10:08:00Z"
+          },
+          "technical_issues": [],
+          "supersedes": null,
+          "superseded_by": null,
+          "legacy_in_place": true
+        }
+      ]
+    },
+    {
+      "asset_id": "enemy_gamma",
+      "display_name": "Enemy Gamma",
+      "category": "enemies",
+      "canonical_revision": "rev_enemy_gamma_current",
+      "requirements": {
+        "source": false,
+        "runtime": true,
+        "rig_compatibility": false
+      },
+      "revisions": [
+        {
+          "revision_id": "rev_enemy_gamma_current",
+          "canonical_state": "canonical",
+          "pipeline_status": null,
+          "source_path": null,
+          "runtime_path": "assets/enemies/enemy_gamma/enemy_gamma_textures_1.png",
+          "files": [
+            {
+              "path": "assets/enemies/enemy_gamma/enemy_gamma_textures_1.png",
+              "role": "textures",
+              "sha256": "ef57f97d489f34906eeeb7c56edd1f31eedd3f8ef9f6aa821dd532295cebe8a1",
+              "size_bytes": 1639903,
+              "format": "png"
+            }
+          ],
+          "created_at": null,
+          "ingested_at": null,
+          "recorded_at": "2026-01-05T10:03:00Z",
+          "promoted_at": null,
+          "git_reference": "6c086322854365ead185cd89d003100c9984a6b7",
+          "source": null,
+          "creator": null,
+          "note": "Synthetic fixture note for rev_enemy_gamma_current. It contains no real project data.",
+          "model": {
+            "triangles": null,
+            "polygons": null,
+            "meshes": null,
+            "materials": null,
+            "textures": null,
+            "skeletons": null,
+            "animations": null
+          },
+          "rig": {
+            "status": "unknown",
+            "scope": "gltf_integrity",
+            "provider": "rigcheck",
+            "reason": "not_applicable",
+            "skeleton": null,
+            "compatible": null,
+            "required_bones": null,
+            "missing_bones": null,
+            "orientation_scale_issues": null,
+            "issues": [],
+            "checked_at": null,
+            "file_sha256": null,
+            "result": null
+          },
+          "technical": {
+            "status": "warning",
+            "issues": [
+              {
+                "code": "DEEP_INSPECTION_UNAVAILABLE",
+                "severity": "warning"
+              }
+            ],
+            "checked_at": "2026-01-05T10:08:00Z"
+          },
+          "technical_issues": [],
+          "supersedes": null,
+          "superseded_by": null,
+          "legacy_in_place": true
+        }
+      ]
+    },
+    {
+      "asset_id": "enemy_delta",
+      "display_name": "Enemy Delta",
+      "category": "enemies",
+      "canonical_revision": "rev_enemy_delta_current",
+      "requirements": {
+        "source": false,
+        "runtime": true,
+        "rig_compatibility": false
+      },
+      "revisions": [
+        {
+          "revision_id": "rev_enemy_delta_current",
+          "canonical_state": "canonical",
+          "pipeline_status": null,
+          "source_path": null,
+          "runtime_path": "assets/enemies/enemy_delta/enemy_delta_textures_1.png",
+          "files": [
+            {
+              "path": "assets/enemies/enemy_delta/enemy_delta_textures_1.png",
+              "role": "textures",
+              "sha256": "d1fee541b921b2457d47aba5b9ba7242f2089ddf5848e03e46f633e3474a9fa0",
+              "size_bytes": 787912,
+              "format": "png"
+            }
+          ],
+          "created_at": null,
+          "ingested_at": null,
+          "recorded_at": "2026-01-05T10:03:00Z",
+          "promoted_at": null,
+          "git_reference": "7f3cc7e21b99bd39c9549fd87eb86a434cc25c41",
+          "source": null,
+          "creator": null,
+          "note": "Synthetic fixture note for rev_enemy_delta_current. It contains no real project data.",
+          "model": {
+            "triangles": null,
+            "polygons": null,
+            "meshes": null,
+            "materials": null,
+            "textures": null,
+            "skeletons": null,
+            "animations": null
+          },
+          "rig": {
+            "status": "unknown",
+            "scope": "gltf_integrity",
+            "provider": "rigcheck",
+            "reason": "not_applicable",
+            "skeleton": null,
+            "compatible": null,
+            "required_bones": null,
+            "missing_bones": null,
+            "orientation_scale_issues": null,
+            "issues": [],
+            "checked_at": null,
+            "file_sha256": null,
+            "result": null
+          },
+          "technical": {
+            "status": "warning",
+            "issues": [
+              {
+                "code": "DEEP_INSPECTION_UNAVAILABLE",
+                "severity": "warning"
+              }
+            ],
+            "checked_at": "2026-01-05T10:08:00Z"
+          },
+          "technical_issues": [],
+          "supersedes": null,
+          "superseded_by": null,
+          "legacy_in_place": true
+        }
+      ]
+    },
+    {
+      "asset_id": "ui_beta",
+      "display_name": "Ui Beta",
+      "category": "ui",
+      "canonical_revision": "rev_ui_beta_current",
+      "requirements": {
+        "source": false,
+        "runtime": true,
+        "rig_compatibility": false
+      },
+      "revisions": [
+        {
+          "revision_id": "rev_ui_beta_current",
+          "canonical_state": "canonical",
+          "pipeline_status": null,
+          "source_path": null,
+          "runtime_path": "assets/ui/ui_beta/ui_beta_runtime_1.jpg",
+          "files": [
+            {
+              "path": "assets/ui/ui_beta/ui_beta_runtime_1.jpg",
+              "role": "runtime",
+              "sha256": "d89409cadcf9fca9499f6c6b2dd13eed1ff60c2eeedb0c82fbc0524f4d7929ac",
+              "size_bytes": 48311,
+              "format": "jpg"
+            }
+          ],
+          "created_at": null,
+          "ingested_at": null,
+          "recorded_at": "2026-01-05T10:03:00Z",
+          "promoted_at": null,
+          "git_reference": null,
+          "source": "Synthetic fixture source.",
+          "creator": null,
+          "note": "Synthetic fixture note for rev_ui_beta_current. It contains no real project data.",
+          "model": {
+            "triangles": null,
+            "polygons": null,
+            "meshes": null,
+            "materials": null,
+            "textures": null,
+            "skeletons": null,
+            "animations": null
+          },
+          "rig": {
+            "status": "unknown",
+            "scope": "gltf_integrity",
+            "provider": "rigcheck",
+            "reason": "not_applicable",
+            "skeleton": null,
+            "compatible": null,
+            "required_bones": null,
+            "missing_bones": null,
+            "orientation_scale_issues": null,
+            "issues": [],
+            "checked_at": null,
+            "file_sha256": null,
+            "result": null
+          },
+          "technical": {
+            "status": "warning",
+            "issues": [
+              {
+                "code": "DEEP_INSPECTION_UNAVAILABLE",
+                "severity": "warning"
+              }
+            ],
+            "checked_at": "2026-01-05T10:08:00Z"
+          },
+          "technical_issues": [],
+          "supersedes": null,
+          "superseded_by": null,
+          "legacy_in_place": true
+        }
+      ]
+    },
+    {
+      "asset_id": "environment_alpha",
+      "display_name": "Environment Alpha",
+      "category": "environments",
+      "canonical_revision": "rev_environment_alpha_current",
+      "requirements": {
+        "source": false,
+        "runtime": true,
+        "rig_compatibility": false
+      },
+      "revisions": [
+        {
+          "revision_id": "rev_environment_alpha_current",
+          "canonical_state": "canonical",
+          "pipeline_status": null,
+          "source_path": null,
+          "runtime_path": "assets/environments/environment_alpha/environment_alpha_textures_1.png",
+          "files": [
+            {
+              "path": "assets/environments/environment_alpha/environment_alpha_textures_1.png",
+              "role": "textures",
+              "sha256": "5523c6cfa88e63a1a46454b051444b03cd1c23bf76b15ebea5056612f3d13913",
+              "size_bytes": 1794653,
+              "format": "png"
+            },
+            {
+              "path": "assets/environments/environment_alpha/environment_alpha_textures_2.png",
+              "role": "textures",
+              "sha256": "730119bdf45c8c06c77f811d199155cf1b01a4e3908be1b4ec8e9584f253a6a9",
+              "size_bytes": 326454,
+              "format": "png"
+            },
+            {
+              "path": "assets/environments/environment_alpha/environment_alpha_textures_3.png",
+              "role": "textures",
+              "sha256": "9f8662b371a8da593f82cef8bfe3fa3cc6ca04bfa7dce973b368c15a87d15968",
+              "size_bytes": 819016,
+              "format": "png"
+            },
+            {
+              "path": "assets/environments/environment_alpha/environment_alpha_textures_4.png",
+              "role": "textures",
+              "sha256": "f14d9fb29ba019ba74416484f3acd561fbf5d4e9bd6ffc41bcdc66eb0276e344",
+              "size_bytes": 849989,
+              "format": "png"
+            },
+            {
+              "path": "assets/environments/environment_alpha/environment_alpha_textures_5.png",
+              "role": "textures",
+              "sha256": "f23bc5e8b77bf5d22e4c220cc6688fa3d9f05f562f54666b08c9f6b6d9f9c2a4",
+              "size_bytes": 1251923,
+              "format": "png"
+            },
+            {
+              "path": "assets/environments/environment_alpha/environment_alpha_textures_6.png",
+              "role": "textures",
+              "sha256": "5661b8b9963043fd411cc66a36f46f574742182f32d1c1b2844c51dafe600490",
+              "size_bytes": 415854,
+              "format": "png"
+            },
+            {
+              "path": "assets/environments/environment_alpha/environment_alpha_textures_7.png",
+              "role": "textures",
+              "sha256": "8a0d2b169f8d7efd6a4c1906d3fe97a0d7a8ce153878d93773c066075a8a48eb",
+              "size_bytes": 419399,
+              "format": "png"
+            },
+            {
+              "path": "assets/environments/environment_alpha/environment_alpha_textures_8.png",
+              "role": "textures",
+              "sha256": "f8a1ed9e929165b61203e75811f6ad2c38522fd6e825a1f471c9a27d7cc37aa8",
+              "size_bytes": 346089,
+              "format": "png"
+            },
+            {
+              "path": "assets/environments/environment_alpha/environment_alpha_textures_9.png",
+              "role": "textures",
+              "sha256": "4fca85aef7189a29ffa1a44cd8689a44731ac7b190b34f48e5adeb9d0d1c49e4",
+              "size_bytes": 614954,
+              "format": "png"
+            }
+          ],
+          "created_at": null,
+          "ingested_at": null,
+          "recorded_at": "2026-01-05T10:03:00Z",
+          "promoted_at": null,
+          "git_reference": "f54891725cc730e3ef5ad4ba7a0e4a1618187720",
+          "source": null,
+          "creator": null,
+          "note": "Synthetic fixture note for rev_environment_alpha_current. It contains no real project data.",
+          "model": {
+            "triangles": null,
+            "polygons": null,
+            "meshes": null,
+            "materials": null,
+            "textures": null,
+            "skeletons": null,
+            "animations": null
+          },
+          "rig": {
+            "status": "unknown",
+            "scope": "gltf_integrity",
+            "provider": "rigcheck",
+            "reason": "not_applicable",
+            "skeleton": null,
+            "compatible": null,
+            "required_bones": null,
+            "missing_bones": null,
+            "orientation_scale_issues": null,
+            "issues": [],
+            "checked_at": null,
+            "file_sha256": null,
+            "result": null
+          },
+          "technical": {
+            "status": "warning",
+            "issues": [
+              {
+                "code": "DEEP_INSPECTION_UNAVAILABLE",
+                "severity": "warning"
+              }
+            ],
+            "checked_at": "2026-01-05T10:08:00Z"
+          },
+          "technical_issues": [],
+          "supersedes": null,
+          "superseded_by": null,
+          "legacy_in_place": true
+        }
+      ]
+    },
+    {
+      "asset_id": "enemy_epsilon",
+      "display_name": "Enemy Epsilon",
+      "category": "enemies",
+      "canonical_revision": "rev_enemy_epsilon_current",
+      "requirements": {
+        "source": false,
+        "runtime": true,
+        "rig_compatibility": false
+      },
+      "revisions": [
+        {
+          "revision_id": "rev_enemy_epsilon_current",
+          "canonical_state": "canonical",
+          "pipeline_status": null,
+          "source_path": null,
+          "runtime_path": "assets/enemies/enemy_epsilon/enemy_epsilon_textures_2.png",
+          "files": [
+            {
+              "path": "assets/enemies/enemy_epsilon/enemy_epsilon_textures_1.png",
+              "role": "textures",
+              "sha256": "a4dc32ce4876c40b45261b2f3f438fae58357d24b6c55dbfca27bf1f4fd72951",
+              "size_bytes": 1269008,
+              "format": "png"
+            },
+            {
+              "path": "assets/enemies/enemy_epsilon/enemy_epsilon_textures_2.png",
+              "role": "textures",
+              "sha256": "abef3182bd42233b2aaf086fc9e7e21e2717c9eeef3795a53455011acd91498f",
+              "size_bytes": 133785,
+              "format": "png"
+            }
+          ],
+          "created_at": null,
+          "ingested_at": null,
+          "recorded_at": "2026-01-05T10:03:00Z",
+          "promoted_at": null,
+          "git_reference": "1cec2ec508b21a414f2694eacabbb48ac273761b",
+          "source": null,
+          "creator": null,
+          "note": "Synthetic fixture note for rev_enemy_epsilon_current. It contains no real project data.",
+          "model": {
+            "triangles": null,
+            "polygons": null,
+            "meshes": null,
+            "materials": null,
+            "textures": null,
+            "skeletons": null,
+            "animations": null
+          },
+          "rig": {
+            "status": "unknown",
+            "scope": "gltf_integrity",
+            "provider": "rigcheck",
+            "reason": "not_applicable",
+            "skeleton": null,
+            "compatible": null,
+            "required_bones": null,
+            "missing_bones": null,
+            "orientation_scale_issues": null,
+            "issues": [],
+            "checked_at": null,
+            "file_sha256": null,
+            "result": null
+          },
+          "technical": {
+            "status": "warning",
+            "issues": [
+              {
+                "code": "DEEP_INSPECTION_UNAVAILABLE",
+                "severity": "warning"
+              }
+            ],
+            "checked_at": "2026-01-05T10:08:00Z"
+          },
+          "technical_issues": [],
+          "supersedes": null,
+          "superseded_by": null,
+          "legacy_in_place": true
+        }
+      ]
+    }
+  ]
+}
