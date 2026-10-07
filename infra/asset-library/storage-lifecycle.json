@@ -1,0 +1,12 @@
+{
+  "rule": [
+    {
+      "action": { "type": "Delete" },
+      "condition": { "age": 7, "matchesPrefix": ["asset-library-cache/"] }
+    },
+    {
+      "action": { "type": "Delete" },
+      "condition": { "age": 1, "matchesPrefix": ["asset-library-cache/tmp/"] }
+    }
+  ]
+}

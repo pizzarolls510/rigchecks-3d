@@ -1,0 +1,14 @@
+[
+  {
+    "origin": ["https://pizzarolls510.github.io"],
+    "method": ["GET", "HEAD"],
+    "responseHeader": ["Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Content-Disposition"],
+    "maxAgeSeconds": 3600
+  },
+  {
+    "origin": ["http://localhost:8000", "http://127.0.0.1:8000"],
+    "method": ["GET", "HEAD"],
+    "responseHeader": ["Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Content-Disposition"],
+    "maxAgeSeconds": 3600
+  }
+]
