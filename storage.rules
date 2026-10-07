@@ -19,5 +19,11 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
       allow delete: if isOwner(userId);
     }
+
+    // Asset Library cache: disposable copies of authoritative GitHub bytes. Written only by the Admin SDK and
+    // delivered only through the API's short-lived signed URLs, which do not consult these rules.
+    match /asset-library-cache/{allPaths=**} {
+      allow read, write: if false;
+    }
   }
 }

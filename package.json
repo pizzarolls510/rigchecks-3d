@@ -7,7 +7,7 @@
     "rigcheck": "./scripts/rigcheck.mjs"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test \"test/**/*.test.mjs\"",
     "rigcheck": "node ./scripts/rigcheck.mjs"
   },
   "engines": {

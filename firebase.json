@@ -4,5 +4,23 @@
   },
   "storage": {
     "rules": "storage.rules"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "asset-library",
+      "runtime": "nodejs22",
+      "ignore": ["node_modules", "test", ".git", "*.log"]
+    }
+  ],
+  "emulators": {
+    "storage": {
+      "host": "127.0.0.1",
+      "port": 9199
+    },
+    "ui": {
+      "enabled": false
+    },
+    "singleProjectMode": true
   }
 }
