@@ -1,4 +1,4 @@
-const CACHE = "rigcheck-v0.4.7";
+const CACHE = "rigcheck-v0.4.8";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -6,12 +6,16 @@ const APP_SHELL = [
   "./patch-v02.css",
   "./firebase-auth.css",
   "./cloud-library.css",
+  "./asset-library.css",
   "./update-manager.js",
   "./app.js",
   "./patch-v02.js",
   "./firebase-auth.js",
   "./cloud-library.js",
+  "./asset-library.js",
   "./lib/model-schema.js",
+  "./lib/asset-library-model.js",
+  "./lib/asset-library-api.js",
   "./manifest.webmanifest",
   "./icons/icon.svg",
   "./icons/icon-192.png",

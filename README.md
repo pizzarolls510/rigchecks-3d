@@ -23,6 +23,7 @@ extends that viewer through the DOM rather than by importing it.
 | `patch-v02.js` | Static-pose behaviour + upload-overlay fix |
 | `firebase-auth.js` | Google sign-in, exposes auth state to the cloud library |
 | `cloud-library.js` (module) | Upload / list / open / delete against Firebase |
+| `asset-library.js` (module) | Read-only INVASION Asset Library overlay; opens revisions through `#fileInput` |
 | `update-manager.js` | Service-worker update handoff for iOS Home Screen apps |
 | `refresh.html` | Standalone one-time cache-recovery page, opened directly |
 | `vendor/three/` | Pinned three.js, incl. `GLTFLoader` and `DRACOLoader` |
@@ -109,7 +110,7 @@ match /users/{uid}/{allPaths=**} {
 ## Service worker — read before deploying
 
 `sw.js` precaches an explicit `APP_SHELL` list under a versioned cache key
-(currently `rigcheck-v0.4.7`). Two rules follow from that:
+(currently `rigcheck-v0.4.8`). Two rules follow from that:
 
 1. **Adding a file to `dist/` is not enough.** If it is part of the shell it must
    be added to `APP_SHELL`, or installed clients never fetch it.
@@ -133,6 +134,26 @@ The narrow-iPhone rule that keeps **Cloud** and **Library** visible lives in the
 `max-width: 430px` block of `cloud-library.css`. It exists to undo
 `.top-actions .ghost { display: none }` from `styles.css`, which otherwise hides
 both buttons. Keep it in mind before touching either rule.
+
+---
+
+## INVASION Asset Library
+
+The **Assets** button opens a read-only view of INVASION's authoritative asset manifest
+(`docs/ASSET_MANIFEST.yaml` on `invasion-godot` `3d-migration`). The browser never talks to
+GitHub. It calls the `assetLibraryApi` Cloud Function (`functions/`), which:
+
+- requires a Firebase ID token whose user has the custom claim `assetLibraryRole`
+  (`reader` or `writer`), set with `functions/scripts/set-asset-role.mjs`;
+- reads the manifest live at the branch head and returns it with that commit SHA;
+- for a file, accepts only a path listed in that revision's `files[]`, copies the Git or
+  Git LFS bytes into the private, content-addressed `asset-library-cache/` in Storage, and
+  returns a 10-minute signed download URL. Bytes never pass through the Function's response.
+
+Pure mapping and client helpers live in `dist/lib/asset-library-model.js` and
+`dist/lib/asset-library-api.js`. Backend tests: `cd functions && npm test` (unit) and
+`npm run test:emulator` (Storage emulator; needs Java 21). Deployment steps, each requiring
+approval, are in [infra/asset-library/DEPLOY.md](infra/asset-library/DEPLOY.md).
 
 ---
 
