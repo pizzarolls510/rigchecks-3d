@@ -18,7 +18,7 @@ import {
 
 // Synthetic manifest with exactly the same schema, shape and test cases as a real INVASION manifest snapshot, but no
 // real asset names, paths, revision IDs, hashes, dates, provenance or notes (rigchecks-3d is public).
-const fixtureManifest = JSON.parse(readFileSync(new URL('./fixtures/invasion-asset-manifest.json', import.meta.url), 'utf8'));
+const fixtureManifest = JSON.parse(readFileSync(new URL('./fixtures/sample-asset-manifest.json', import.meta.url), 'utf8'));
 
 function findAsset(grouped, assetId) {
   return grouped.categories.flatMap((category) => category.assets).find((asset) => asset.assetId === assetId);
