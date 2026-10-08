@@ -97,6 +97,21 @@ Google manages that binding, and it must not be removed.
   checked; that needs the Policy Analyzer API, which was deliberately not enabled. Live API and site smoke checks
   passed afterwards.
 
+- 2026-10-08 (Phase 4): The live Firestore and Storage rulesets were read and diffed before release; neither had
+  drifted from the repository. After release, both live rulesets are byte-identical to the committed files.
+  - Function revision `assetlibraryapi-00003-map`, with the same runtime account, limits and pinned secret.
+  - The owner added Actions read & write to the existing PAT and granted `roles/datastore.user` to
+    `asset-library-api`; read-back showed no other role changes.
+  - Staging lifecycle applied (cache 7 d, cache tmp 1 d, staging 2 d), CORS unchanged.
+  - UI published at `rigcheck-v0.4.9`; the live files are byte-identical to the commit.
+  - Live verification through the signed-in UI:
+    - two promote dry runs, one returning warnings (not confirmed) and one correctly refused by a recorded asset
+      blocker;
+    - one controlled ingest of a synthetic test asset, committed by the job runner as a fast-forward containing
+      exactly the pipeline's staged files.
+    Job records, run artifacts, Git LFS bytes and validation were all checked. No signed URL was stored, and no lock
+    remained. Asset-specific details are in the private plan.
+
 ## What gets deployed
 
 - Function `assetLibraryApi` (2nd gen, `us-west1`, Node 22, 1 GiB, 300 s timeout, max 3 instances,
