@@ -2,3 +2,6 @@
 .DS_Store
 node_modules/
 rigcheck.config.json
+
+# Firebase emulator debug logs
+*-debug.log

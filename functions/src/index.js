@@ -2,6 +2,7 @@
 // the platform `cors` option is intentionally not used to avoid two competing policies.
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { defineSecret } from 'firebase-functions/params';
 import { onRequest } from 'firebase-functions/v2/https';
@@ -9,6 +10,7 @@ import { createApp } from './app.js';
 import { createBucketStore } from './bucket-store.js';
 import { GITHUB_OWNER, GITHUB_REPO, REGION, RUNTIME_SERVICE_ACCOUNT, STORAGE_BUCKET } from './config.js';
 import { createGitHubClient } from './github.js';
+import { createFirestoreDb } from './job-store.js';
 
 const GITHUB_TOKEN = defineSecret('GITHUB_TOKEN');
 
@@ -20,7 +22,8 @@ function assetLibraryApp() {
   app ??= createApp({
     verifyIdToken: (token) => getAuth().verifyIdToken(token, true),
     github: createGitHubClient({ token: GITHUB_TOKEN.value(), owner: GITHUB_OWNER, repo: GITHUB_REPO }),
-    store: createBucketStore(getStorage().bucket(STORAGE_BUCKET))
+    store: createBucketStore(getStorage().bucket(STORAGE_BUCKET)),
+    db: createFirestoreDb(getFirestore())
   });
   return app;
 }

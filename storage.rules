@@ -25,5 +25,21 @@ service firebase.storage {
     match /asset-library-cache/{allPaths=**} {
       allow read, write: if false;
     }
+
+    // Asset Library staged uploads: asset-library-staging/{uid}/{jobId}/{fileName}. Only an Asset Library writer
+    // may upload, only into their own folder, only a supported asset type up to 200 MB. Nobody reads them back
+    // through rules: the API checks size and MD5, and the job runner downloads through a 30-minute signed URL.
+    // The extension list mirrors the asset pipeline's SUPPORTED set (STAGING_EXTENSIONS in functions/src/config.js;
+    // a unit test keeps them identical). A bucket lifecycle rule deletes staged objects after 2 days.
+    match /asset-library-staging/{userId}/{jobId}/{fileName} {
+      allow create, update: if isOwner(userId)
+        && request.auth.token.get('assetLibraryRole', null) == 'writer'
+        && jobId.matches('^[A-Za-z0-9_-]{8,64}$')
+        && fileName.matches('^[A-Za-z0-9][A-Za-z0-9._ -]{0,127}$')
+        && fileName.lower().matches('^.*[.](blend|glb|fbx|psd|tga|exr|tif|tiff|ktx2|png|jpg|jpeg|webp|gif|hdr|wav|ogg|mp3|flac|ttf|otf)$')
+        && request.resource.size > 0
+        && request.resource.size <= 200 * 1024 * 1024;
+      allow read, delete: if false;
+    }
   }
 }

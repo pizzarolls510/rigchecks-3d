@@ -19,11 +19,15 @@ export function createManifestSource({ github, branch, manifestPath, headCacheTt
   const manifests = new Map();
   const directories = new Map();
 
-  async function currentSha() {
-    if (head && now() - head.at < headCacheTtlMs) return head.sha;
+  async function freshSha() {
     const sha = await github.branchHead(branch);
     head = { sha, at: now() };
     return sha;
+  }
+
+  async function currentSha() {
+    if (head && now() - head.at < headCacheTtlMs) return head.sha;
+    return freshSha();
   }
 
   async function manifestAt(sha) {
@@ -60,6 +64,9 @@ export function createManifestSource({ github, branch, manifestPath, headCacheTt
       const sha = await currentSha();
       return { sha, manifest: await manifestAt(sha) };
     },
+    currentSha,
+    // Mutations compare the reviewed base with the live head, never with the briefly cached one.
+    freshSha,
     treeEntry
   };
 }

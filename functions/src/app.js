@@ -1,12 +1,16 @@
-// Asset Library HTTP API (Phase 2: read-only). Authorization and resolution only; asset bytes are delivered
-// exclusively through short-lived signed Storage URLs.
+// Asset Library HTTP API. Phase 2: read-only manifest and file resolution; asset bytes are delivered exclusively
+// through short-lived signed Storage URLs. Phase 4: writer-only upload reservations and job dispatch, and job
+// status for any role (see jobs.js).
 import { randomUUID } from 'node:crypto';
 import express from 'express';
-import { authMiddleware, corsMiddleware } from './access.js';
+import { authMiddleware, corsMiddleware, requireWriter } from './access.js';
 import { DEFAULT_CONFIG } from './config.js';
 import { contentTypeFor, ensureCached, resolveContent } from './content-cache.js';
 import { ApiError, errorHandler, sendError } from './errors.js';
+import { createJobService, publicJob } from './jobs.js';
 import { createManifestSource, findListedFile } from './manifest-source.js';
+import { MAX_TEXT, MAX_UPLOAD_BYTES } from './runner-contract.js';
+import { createVocabularySource, publicVocabulary } from './vocabulary.js';
 
 // Same identifier rules as tools/asset_pipeline/common.py (ID, REVISION_ID).
 const ASSET_ID = /^[a-z][a-z0-9_]{0,63}$/;
@@ -37,9 +41,11 @@ export function createApp({
   verifyIdToken,
   github,
   store,
+  db,
   config = DEFAULT_CONFIG,
   now = Date.now,
   makeTmpId = randomUUID,
+  makeJobId = randomUUID,
   logger = console
 }) {
   const source = createManifestSource({
@@ -49,6 +55,9 @@ export function createApp({
     headCacheTtlMs: config.headCacheTtlMs,
     now
   });
+  const vocabulary = createVocabularySource({ github, path: config.vocabularyPath });
+  const jobs = createJobService({ db, github, store, source, vocabulary, config, now, makeJobId, logger });
+  const jsonBody = express.json({ limit: '16kb', strict: true });
 
   const app = express();
   app.disable('x-powered-by');
@@ -62,11 +71,19 @@ export function createApp({
 
   app.get('/api/manifest', async (req, res) => {
     const { sha, manifest } = await source.current();
+    // Form choices for the write UI, from the pipeline at the same commit. Browsing never depends on it.
+    let pipelineVocabulary = null;
+    try {
+      pipelineVocabulary = { ...publicVocabulary(await vocabulary.at(sha)), maxUploadBytes: MAX_UPLOAD_BYTES, textLimits: MAX_TEXT };
+    } catch (error) {
+      logger.error('Asset Library vocabulary unavailable', { sha, code: error?.code, message: error?.message });
+    }
     res.json({
       commitSha: sha,
       branch: config.manifestBranch,
       manifestPath: config.manifestPath,
-      manifest
+      manifest,
+      vocabulary: pipelineVocabulary
     });
   });
 
@@ -108,6 +125,26 @@ export function createApp({
       commitSha: sha,
       cacheHit: cached.cacheHit
     });
+  });
+
+  app.post('/api/uploads', requireWriter, jsonBody, async (req, res) => {
+    res.status(201).json(await jobs.reserveUpload(req.assetUser, req.body));
+  });
+
+  app.post('/api/jobs/ingest', requireWriter, jsonBody, async (req, res) => {
+    res.status(202).json({ job: publicJob(await jobs.startIngest(req.assetUser, req.body)) });
+  });
+
+  app.post('/api/jobs/promote', requireWriter, jsonBody, async (req, res) => {
+    res.status(202).json({ job: publicJob(await jobs.startPromote(req.assetUser, req.body)) });
+  });
+
+  app.post('/api/jobs/validate', requireWriter, jsonBody, async (req, res) => {
+    res.status(202).json({ job: publicJob(await jobs.startValidate(req.assetUser, req.body)) });
+  });
+
+  app.get('/api/jobs/:jobId', async (req, res) => {
+    res.json({ job: publicJob(await jobs.getJob(req.params.jobId)) });
   });
 
   app.use((req, res) => sendError(res, 404, 'not_found', 'Unknown Asset Library endpoint.'));

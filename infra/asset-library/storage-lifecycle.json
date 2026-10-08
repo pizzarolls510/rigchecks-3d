@@ -7,6 +7,10 @@
     {
       "action": { "type": "Delete" },
       "condition": { "age": 1, "matchesPrefix": ["asset-library-cache/tmp/"] }
+    },
+    {
+      "action": { "type": "Delete" },
+      "condition": { "age": 2, "matchesPrefix": ["asset-library-staging/"] }
     }
   ]
 }

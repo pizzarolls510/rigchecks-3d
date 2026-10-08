@@ -1,7 +1,7 @@
-# Asset Library — Phase 2 deployment runbook
+# Asset Library — deployment runbook (Phase 2, Phase 4)
 
-Every step below changes shared infrastructure and needs explicit approval at the time it is run.
-Run them in this order; each step is safe to re-run.
+Every step below changes shared infrastructure. Run it only as the private Asset Library plan's current execution
+policy allows. Run them in this order; each step is safe to re-run.
 
 | # | Step | Command | Reversible by |
 |---|------|---------|---------------|
@@ -108,6 +108,51 @@ Google manages that binding, and it must not be removed.
   The bucket's existing 7-day soft-delete policy still applies to deleted objects.
 
 Firestore rules are unchanged in Phase 2 (no Asset Library collections exist until Phase 4).
+
+## Phase 4 — job endpoints and write UI
+
+Phase 4 adds `POST /api/uploads`, `POST /api/jobs/{ingest,promote,validate}` and `GET /api/jobs/:id`, the
+Firestore lock and rate limit, staged uploads, and the upload/promote/re-validate UI. The job runner itself
+(`.github/workflows/asset-library-job.yml` on `invasion-godot` `main`) shipped in Phase 3 and is unchanged.
+
+Every step changes shared infrastructure or GitHub permissions; the private plan's execution policy governs when
+they run. Run them in this order:
+
+| # | Step | Command | Reversible by |
+|---|------|---------|---------------|
+| P4-1 | Give the GitHub PAT dispatch rights | GitHub → Settings → Developer settings → Fine-grained tokens → the Asset Library token → **Edit**: add repository permission **Actions: read and write** (keep Contents read, Metadata read; repository access stays only `pizzarolls510/invasion-godot`). Editing keeps the token value, so Secret Manager is unchanged. If a new token is generated instead, store it with step 2 above and redeploy (P4-6). | Remove the Actions permission |
+| P4-2 | Firestore access for the runtime identity | `gcloud projects add-iam-policy-binding rigcheck-cfbe3 --member="serviceAccount:asset-library-api@rigcheck-cfbe3.iam.gserviceaccount.com" --role=roles/datastore.user --condition=None` | `gcloud projects remove-iam-policy-binding … --role=roles/datastore.user` |
+| P4-3 | Deploy Firestore rules | `firebase deploy --only firestore:rules --project rigcheck-cfbe3` | Redeploy the previous `firestore.rules` |
+| P4-4 | Deploy Storage rules | `firebase deploy --only storage --project rigcheck-cfbe3` | Redeploy the previous `storage.rules` |
+| P4-5 | Bucket lifecycle (staging) | `node infra/asset-library/apply-bucket-config.mjs` (dry run), then `… --apply`. CORS is unchanged; the lifecycle gains the 2-day `asset-library-staging/` rule. | Re-apply the Phase 2 lifecycle (cache rules only) |
+| P4-6 | Deploy the Function | `firebase deploy --only functions:asset-library --project rigcheck-cfbe3` | Redeploy the previous revision (`gcloud run services update-traffic assetlibraryapi --region us-west1 --to-revisions <previous>=100`) |
+| P4-7 | Publish the UI | Push the approved `rigchecks-3d` commit to `main` (GitHub Pages deploys `dist/`, cache `rigcheck-v0.4.9`) | Revert the commit |
+
+Notes:
+
+- P4-2 is the only IAM change. The runtime identity already has what the other new paths need:
+  `storage.objectAdmin` on the bucket covers reading staged-object metadata, and `serviceAccountTokenCreator` on
+  itself covers the 30-minute staged download URLs. Firestore has no collection-level IAM; the security rules
+  (P4-3) keep every client away from `assetLibraryLocks` and `assetLibraryRate` and make `assetLibraryJobs`
+  read-only to role holders.
+- Order matters: until P4-1 the dispatch returns 403 (`dispatch_failed`, nothing changed); until P4-2 every job
+  route fails with 500; until P4-4 browser uploads are refused. The read-only Phase 2 routes keep working
+  throughout.
+- Browser uploads go through the Firebase Storage API (`firebasestorage.googleapis.com`), which handles its own
+  CORS, so the bucket CORS configuration does not change.
+- No Firestore index is needed: the API reads and writes documents by ID only.
+
+### Verify after deploying (Phase 4 acceptance)
+
+1. Sign in as the writer; the header shows **Upload candidate** and candidate revisions show **Promote…**.
+   A reader account sees neither.
+2. **Promote dry run** on an existing candidate (the first real job): the tray shows the dry-run review (selected
+   candidate, current canonical, warnings, file and manifest changes). Do **not** confirm. Check that
+   `3d-migration` is unchanged (`git ls-remote origin refs/heads/3d-migration` before and after) and that the job
+   reached `done` with its result cached in `assetLibraryJobs`.
+3. One controlled verification write: ingest a new, isolated test candidate (never a promotion or replacement of
+   existing gameplay art). Confirm `result.json` success, the exact pipeline-staged set and the bot commit on
+   `3d-migration`, then that a fresh load (and another device, when available) shows it.
 
 ## Verify after deploying (Phase 2 acceptance)
 

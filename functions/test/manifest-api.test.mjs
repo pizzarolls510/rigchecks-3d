@@ -161,7 +161,7 @@ test('manifest is returned with the exact commit SHA it was read at; head lookup
     assert.equal(fresh.body.commitSha, HEAD_B);
     assert.equal(fresh.body.manifest.assets[0].revisions[0].note, 'state at B', 'content always matches the SHA it is labelled with');
     assert.deepEqual(
-      github.calls.filter(([name]) => name === 'fileText').map(([, sha, path]) => [sha, path]),
+      github.calls.filter(([name, , path]) => name === 'fileText' && path === MANIFEST_PATH).map(([, sha, path]) => [sha, path]),
       [[HEAD_A, MANIFEST_PATH], [HEAD_B, MANIFEST_PATH]]
     );
   });

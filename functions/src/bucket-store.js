@@ -1,4 +1,4 @@
-// Thin adapter over a @google-cloud/storage Bucket (as returned by firebase-admin) for the asset cache.
+// Thin adapter over a @google-cloud/storage Bucket (as returned by firebase-admin) for the asset cache and staged uploads.
 
 function contentDisposition(fileName) {
   const ascii = fileName.replace(/[^\x20-\x7e]|["\\]/g, '_');
@@ -43,6 +43,23 @@ export function createBucketStore(bucket) {
         responseDisposition: contentDisposition(fileName),
         responseType: contentType
       });
+      return url;
+    },
+
+    // Size and the base64 MD5 Cloud Storage computed for a staged upload; null when the object is absent.
+    async stat(name) {
+      try {
+        const [metadata] = await bucket.file(name).getMetadata();
+        return { size: Number(metadata.size), md5Hash: metadata.md5Hash ?? null, contentType: metadata.contentType ?? null };
+      } catch (error) {
+        if (error?.code === 404) return null;
+        throw error;
+      }
+    },
+
+    // Plain V4 GET URL for the job runner to download a staged upload (https://storage.googleapis.com/...).
+    async signedStagedReadUrl(name, { expiresAt }) {
+      const [url] = await bucket.file(name).getSignedUrl({ version: 'v4', action: 'read', expires: expiresAt });
       return url;
     }
   };

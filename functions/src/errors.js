@@ -29,7 +29,15 @@ export function errorHandler(logger = console) {
   // eslint-disable-next-line no-unused-vars
   return (error, req, res, next) => {
     if (error instanceof ApiError) {
+      if (error.status === 429 && error.details?.retryAfterSeconds) res.set('Retry-After', String(error.details.retryAfterSeconds));
       return sendError(res, error.status, error.code, error.message, error.details);
+    }
+    // express.json() rejections: malformed JSON or an oversized body.
+    if (error?.type === 'entity.parse.failed' || error?.type === 'entity.verify.failed' || error?.type === 'encoding.unsupported') {
+      return sendError(res, 400, 'invalid_request', 'The request body must be valid JSON.');
+    }
+    if (error?.type === 'entity.too.large') {
+      return sendError(res, 413, 'invalid_request', 'The request body is too large.');
     }
     if (error instanceof UpstreamError) {
       logger.error('Asset Library upstream error', { status: error.status, message: error.message });
