@@ -37,7 +37,35 @@ const MESSAGES = {
   mutation_in_progress: 'Another asset change is already running. Wait for it to finish.',
   rate_limited: 'Too many Asset Library requests. Wait a little and try again.',
   network: 'Could not reach the Asset Library. Check your connection and try again.',
-  internal: 'The Asset Library hit an unexpected error.'
+  internal: 'The Asset Library hit an unexpected error.',
+  // Job API (Phase 4).
+  vocabulary_unavailable: 'The asset pipeline vocabulary could not be read from the authoritative branch, so changes are unavailable.',
+  job_not_found: 'That Asset Library job was not found.',
+  job_already_started: 'That upload has already been submitted.',
+  upload_missing: 'The uploaded file was not found. Upload it again.',
+  upload_mismatch: 'The uploaded file does not match what was reserved. Upload it again.',
+  upload_expired: 'That upload expired. Upload the file again.',
+  dry_run_required: 'Run a successful dry run before confirming the promotion.',
+  dry_run_not_owned: 'Only the person who ran this dry run can confirm it.',
+  dry_run_already_confirmed: 'This dry run has already been confirmed.',
+  warnings_not_accepted: 'This promotion has validation warnings. Review them and accept them explicitly.',
+  dispatch_failed: 'GitHub refused to start the job. Nothing was changed.',
+  // Job results (the runner's result.json codes and run outcomes).
+  invalid_input: 'The job runner rejected the request.',
+  lfs_failed: 'The job could not download Git LFS files.',
+  download_failed: 'The job could not download the uploaded file.',
+  pipeline_rejected: 'The asset pipeline rejected the change.',
+  pipeline_failed: 'The asset pipeline failed unexpectedly.',
+  nothing_staged: 'The asset pipeline produced no change to publish.',
+  unexpected_changes: 'The job found changes it did not expect and published nothing.',
+  push_failed: 'The job could not push its commit. Nothing was published.',
+  timeout: 'The job timed out.',
+  run_cancelled: 'The job run was cancelled.',
+  run_failed: 'The job run failed.',
+  run_not_found: 'The job run never started on GitHub.',
+  result_missing: 'The job run finished without a result.',
+  result_invalid: 'The job result could not be read.',
+  result_mismatch: 'The job result belonged to a different job.'
 };
 
 export function describeApiError(code) {
@@ -57,9 +85,23 @@ export async function apiGet({ base, path, params, getIdToken, fetchImpl = globa
   const url = new URL(`${base}${path}`);
   for (const [key, value] of Object.entries(params ?? {})) url.searchParams.set(key, value);
   const token = await getIdToken();
+  return apiRequest(fetchImpl, url.toString(), { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+}
+
+export async function apiPost({ base, path, body, getIdToken, fetchImpl = globalThis.fetch }) {
+  const token = await getIdToken();
+  return apiRequest(fetchImpl, `${base}${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+    cache: 'no-store'
+  });
+}
+
+async function apiRequest(fetchImpl, url, init) {
   let response;
   try {
-    response = await fetchImpl(url.toString(), { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+    response = await fetchImpl(url, init);
   } catch {
     throw new AssetApiError('network', 0);
   }
@@ -71,7 +113,13 @@ export async function apiGet({ base, path, params, getIdToken, fetchImpl = globa
   }
   if (!response.ok) {
     const code = body?.error?.code ?? (response.status === 429 ? 'rate_limited' : 'internal');
-    throw new AssetApiError(code, response.status, describeApiError(code));
+    const error = new AssetApiError(code, response.status, describeApiError(code));
+    error.details = body?.error?.details ?? null;
+    // Validation messages name the offending field, so they are more useful than the generic text.
+    if (code === 'invalid_request' && typeof body?.error?.message === 'string') error.message = body.error.message;
+    const retryAfter = Number(response.headers?.get?.('retry-after'));
+    if (Number.isFinite(retryAfter) && retryAfter > 0) error.retryAfterSeconds = retryAfter;
+    throw error;
   }
   return body;
 }

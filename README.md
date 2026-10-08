@@ -23,7 +23,7 @@ extends that viewer through the DOM rather than by importing it.
 | `patch-v02.js` | Static-pose behaviour + upload-overlay fix |
 | `firebase-auth.js` | Google sign-in, exposes auth state to the cloud library |
 | `cloud-library.js` (module) | Upload / list / open / delete against Firebase |
-| `asset-library.js` (module) | Read-only INVASION Asset Library overlay; opens revisions through `#fileInput` |
+| `asset-library.js` (module) | INVASION Asset Library overlay: browse and open revisions through `#fileInput`; writers can upload candidates, promote and re-validate |
 | `update-manager.js` | Service-worker update handoff for iOS Home Screen apps |
 | `refresh.html` | Standalone one-time cache-recovery page, opened directly |
 | `vendor/three/` | Pinned three.js, incl. `GLTFLoader` and `DRACOLoader` |
@@ -110,7 +110,7 @@ match /users/{uid}/{allPaths=**} {
 ## Service worker — read before deploying
 
 `sw.js` precaches an explicit `APP_SHELL` list under a versioned cache key
-(currently `rigcheck-v0.4.8`). Two rules follow from that:
+(currently `rigcheck-v0.4.9`). Two rules follow from that:
 
 1. **Adding a file to `dist/` is not enough.** If it is part of the shell it must
    be added to `APP_SHELL`, or installed clients never fetch it.
@@ -139,21 +139,44 @@ both buttons. Keep it in mind before touching either rule.
 
 ## INVASION Asset Library
 
-The **Assets** button opens a read-only view of INVASION's authoritative asset manifest
+The **Assets** button opens INVASION's authoritative asset manifest
 (`docs/ASSET_MANIFEST.yaml` on `invasion-godot` `3d-migration`). The browser never talks to
 GitHub. It calls the `assetLibraryApi` Cloud Function (`functions/`), which:
 
 - requires a Firebase ID token whose user has the custom claim `assetLibraryRole`
   (`reader` or `writer`), set with `functions/scripts/set-asset-role.mjs`;
-- reads the manifest live at the branch head and returns it with that commit SHA;
+- reads the manifest live at the branch head and returns it with that commit SHA, plus the
+  asset pipeline's vocabulary (IDs, categories, roles, file types) read from the same commit;
 - for a file, accepts only a path listed in that revision's `files[]`, copies the Git or
   Git LFS bytes into the private, content-addressed `asset-library-cache/` in Storage, and
   returns a 10-minute signed download URL. Bytes never pass through the Function's response.
 
-Pure mapping and client helpers live in `dist/lib/asset-library-model.js` and
-`dist/lib/asset-library-api.js`. Backend tests: `cd functions && npm test` (unit) and
-`npm run test:emulator` (Storage emulator; needs Java 21). Deployment steps, each requiring
-approval, are in [infra/asset-library/DEPLOY.md](infra/asset-library/DEPLOY.md).
+Writers can also change the manifest, but only through INVASION's own asset pipeline, run as an
+**Asset Library job** (the `asset-library-job.yml` workflow on `invasion-godot` `main`):
+
+- **Upload candidate**: `POST /api/uploads` reserves a job and a path in
+  `asset-library-staging/{uid}/{jobId}/` (Storage rules: writer only, own folder, supported type,
+  ≤200 MB, deleted after 2 days); the browser uploads there; `POST /api/jobs/ingest` dispatches the
+  runner with a 30-minute signed URL plus the size and MD5 Cloud Storage recorded.
+- **Promote**: always a dry run first (`POST /api/jobs/promote` with `dryRun: true`). The confirm
+  names only that dry run and inherits all of its parameters and base commit; it must come from the
+  same user, and must accept warnings explicitly whenever the dry run reported any.
+- **Re-validate**: `POST /api/jobs/validate` (read-only).
+- `GET /api/jobs/:id` maps the GitHub run to `queued | running | done | error`, reads the
+  `asset-job-result` artifact, and caches the final result in Firestore (`assetLibraryJobs`).
+
+Every request is checked against the runner's input contract before dispatch. Mutations (ingest,
+promote confirm) also require the reviewed base commit to equal the live branch head, take a
+Firestore lock (`409 mutation_in_progress` while another runs; it expires after 20 minutes), and
+count against a per-user limit of 20 jobs and 20 uploads per hour (`429`). The runner re-checks the
+base commit before running and before its non-force push.
+
+Pure mapping and client helpers live in `dist/lib/asset-library-model.js`,
+`dist/lib/asset-library-api.js` and `dist/lib/asset-library-jobs.js`. Backend tests:
+`cd functions && npm test` (unit, with GitHub, Actions, Storage and Firestore faked) and
+`npm run test:emulator` (Storage and Firestore emulators: rules, transactions; needs Java 21).
+Deployment steps, each changing shared infrastructure, are in
+[infra/asset-library/DEPLOY.md](infra/asset-library/DEPLOY.md).
 
 ---
 

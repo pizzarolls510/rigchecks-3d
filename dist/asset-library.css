@@ -534,3 +534,202 @@ body.asset-library-open {
     font-size: 0.7rem;
   }
 }
+
+/* ---- Writer actions (Phase 4): upload candidate, promote, re-validate ---- */
+/* `.button` sets display, which would otherwise override the hidden attribute. */
+.asset-library-overlay [hidden] {
+  display: none !important;
+}
+
+.asset-library-head-actions .asset-write-action {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 0.85rem;
+}
+
+.asset-write-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.asset-write-actions .button,
+.asset-job-actions .button {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 0.85rem;
+}
+
+.asset-job-tray[hidden] {
+  display: none !important;
+}
+
+.asset-job-tray {
+  flex: 0 1 auto;
+  max-height: 42%;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 155, 84, 0.3);
+  border-radius: 12px;
+  background: rgba(255, 155, 84, 0.06);
+}
+
+.asset-job-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.asset-job-head strong {
+  flex: 1 1 260px;
+  font-size: 0.92rem;
+}
+
+.asset-job-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 0.78rem;
+}
+
+.asset-job-meta a {
+  color: var(--blue-bright);
+}
+
+.asset-job-head .asset-icon-button {
+  width: 30px;
+  height: 30px;
+}
+
+.asset-job-message {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.asset-job-message.error,
+.asset-form-error {
+  color: #ff8f8f;
+}
+
+.asset-job-progress {
+  height: 3px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, transparent, var(--orange), transparent) 0 0 / 40% 100% no-repeat, rgba(255, 155, 84, 0.15);
+  animation: asset-job-progress 1.4s linear infinite;
+}
+
+@keyframes asset-job-progress {
+  from { background-position: -40% 0, 0 0; }
+  to { background-position: 140% 0, 0 0; }
+}
+
+.asset-job-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.asset-accept {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 155, 84, 0.35);
+  border-radius: 10px;
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.asset-accept input {
+  margin-top: 2px;
+  accent-color: var(--orange);
+}
+
+.asset-form {
+  display: grid;
+  gap: 12px;
+  max-width: 640px;
+}
+
+.asset-form.compact {
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(1, 7, 11, 0.35);
+}
+
+.asset-form p {
+  margin: 0;
+}
+
+.asset-form-field {
+  display: grid;
+  gap: 4px;
+}
+
+.asset-form-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.asset-form-field input[type="text"],
+.asset-form-field select,
+.asset-form-field textarea {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  color: var(--ink);
+  background: rgba(1, 7, 11, 0.55);
+  font: inherit;
+  font-size: 16px; /* prevents iOS zoom on focus */
+}
+
+.asset-form-field textarea {
+  resize: vertical;
+}
+
+.asset-form-field input[type="file"] {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.asset-form-hint {
+  color: var(--dim);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.asset-form-error {
+  font-size: 0.8rem;
+}
+
+.asset-form-error:empty {
+  display: none;
+}
+
+.revision-promote:empty {
+  display: none;
+}
+
+.asset-library-head-actions .asset-write-action {
+  white-space: nowrap;
+}
+
+@media (max-width: 430px) {
+  .asset-library-head-actions .asset-write-action {
+    padding: 0 9px;
+    font-size: 0.78rem;
+  }
+}

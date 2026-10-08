@@ -1,4 +1,4 @@
-const CACHE = "rigcheck-v0.4.8";
+const CACHE = "rigcheck-v0.4.9";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -16,6 +16,7 @@ const APP_SHELL = [
   "./lib/model-schema.js",
   "./lib/asset-library-model.js",
   "./lib/asset-library-api.js",
+  "./lib/asset-library-jobs.js",
   "./manifest.webmanifest",
   "./icons/icon.svg",
   "./icons/icon-192.png",

@@ -1,8 +1,10 @@
-// RigCheck 3D — INVASION Asset Library (read-only browse, preview and Open in RigCheck).
-// The authoritative source is docs/ASSET_MANIFEST.yaml on invasion-godot 3d-migration, served by the Asset Library API.
-// Asset bytes arrive only through short-lived signed URLs and enter the existing viewer through #fileInput.
+// RigCheck 3D — INVASION Asset Library (browse, preview and Open in RigCheck; for writers also upload candidate,
+// promote and re-validate). The authoritative source is docs/ASSET_MANIFEST.yaml on invasion-godot 3d-migration,
+// served by the Asset Library API. Asset bytes arrive only through short-lived signed URLs and enter the existing
+// viewer through #fileInput. Changes run only as Asset Library jobs (the INVASION pipeline on GitHub Actions).
 import { getApps, getApp, initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
+import { getStorage, ref as storageRef, uploadBytesResumable } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-storage.js";
 import {
   NOT_AVAILABLE,
   STATE_ORDER,
@@ -13,7 +15,22 @@ import {
   groupManifest,
   stateLabel
 } from "./lib/asset-library-model.js";
-import { AssetApiError, apiGet, describeApiError, resolveApiBase, shortSha } from "./lib/asset-library-api.js";
+import { AssetApiError, apiGet, apiPost, describeApiError, resolveApiBase, shortSha } from "./lib/asset-library-api.js";
+import {
+  buildIngestRequest,
+  buildPromoteConfirmRequest,
+  buildPromoteDryRunRequest,
+  checkIngestForm,
+  checkUploadFile,
+  describeJobError,
+  isTerminalJob,
+  jobStatusText,
+  pollJob,
+  roleFromClaims,
+  summarizeDryRun,
+  summarizeIngest,
+  summarizeValidation
+} from "./lib/asset-library-jobs.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDpXmQbxQ0NzY-oTI9lfdxi7DO5MMXZdYg",
@@ -27,6 +44,7 @@ const firebaseConfig = {
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const storage = getStorage(app);
 const API_BASE = resolveApiBase(window.location, window.localStorage);
 const DOWNLOAD_TIMEOUT_MS = 180000;
 const VIEWER_LOAD_TIMEOUT_MS = 90000;
@@ -81,6 +99,14 @@ function initAssetLibrary() {
   let selectedAssetId = null;
   let accessState = 'idle';
   let busy = false;
+  let role = null;
+  let vocabulary = null;
+  // One job at a time from this page; its progress lives in the job tray, which survives re-renders.
+  let jobBusy = false;
+  let tray = null;
+  let pollGeneration = 0;
+  let reusableUpload = null;
+  let uploadForm = null;
 
   const assetButton = el('button', {
     className: 'button ghost asset-library-button',
@@ -102,6 +128,7 @@ function initAssetLibrary() {
           <p id="assetLibrarySource">Authoritative asset manifest</p>
         </div>
         <div class="asset-library-head-actions">
+          <button class="button secondary asset-write-action" id="assetLibraryUpload" type="button" hidden>Upload candidate</button>
           <button class="asset-icon-button" id="assetLibraryRefresh" type="button" title="Refresh from the authoritative branch" aria-label="Refresh manifest">↻</button>
           <button class="asset-icon-button" id="assetLibraryClose" type="button" aria-label="Close asset library">×</button>
         </div>
@@ -111,11 +138,12 @@ function initAssetLibrary() {
         <label class="asset-review-filter"><input id="assetLibraryReviewOnly" type="checkbox" /> Needs review</label>
       </div>
       <p class="asset-library-status" id="assetLibraryStatus" role="status" aria-live="polite"></p>
+      <section class="asset-job-tray" id="assetLibraryJobTray" aria-live="polite" hidden></section>
       <div class="asset-library-body" id="assetLibraryBody">
         <nav class="asset-library-list" id="assetLibraryList" aria-label="Assets"></nav>
         <section class="asset-library-detail" id="assetLibraryDetail" aria-live="polite"></section>
       </div>
-      <footer class="asset-library-foot">Read-only view of the INVASION manifest. Notes and states change only through the asset pipeline.</footer>
+      <footer class="asset-library-foot" id="assetLibraryFoot">Read-only view of the INVASION manifest. Notes and states change only through the asset pipeline.</footer>
     </section>
   `;
   document.body.appendChild(overlay);
@@ -129,6 +157,9 @@ function initAssetLibrary() {
   const body = overlay.querySelector('#assetLibraryBody');
   const list = overlay.querySelector('#assetLibraryList');
   const detail = overlay.querySelector('#assetLibraryDetail');
+  const uploadButton = overlay.querySelector('#assetLibraryUpload');
+  const jobTray = overlay.querySelector('#assetLibraryJobTray');
+  const footer = overlay.querySelector('#assetLibraryFoot');
 
   const getIdToken = () => {
     if (!currentUser) throw new AssetApiError('unauthenticated', 401);
@@ -168,6 +199,8 @@ function initAssetLibrary() {
       const response = await apiGet({ base: API_BASE, path: '/api/manifest', getIdToken });
       grouped = groupManifest(response.manifest);
       commitSha = response.commitSha;
+      vocabulary = response.vocabulary ?? null;
+      role = await readRole();
       accessState = 'ok';
       sourceLine.textContent = `Manifest as of ${shortSha(commitSha) ?? UNKNOWN} on ${response.branch}`;
       sourceLine.title = commitSha ?? '';
@@ -176,16 +209,31 @@ function initAssetLibrary() {
       if (!grouped.schemaSupported) setStatus(`Manifest schema ${displayValue(grouped.schemaVersion)} is newer than this viewer expects; showing what it can read.`, true);
       if (selectedAssetId && !findAsset(selectedAssetId)) selectedAssetId = null;
       render();
+      if (tray && !jobBusy) renderTray();
     } catch (error) {
       grouped = null;
+      vocabulary = null;
       accessState = error?.code === 'not_authorized' ? 'not_authorized' : 'error';
       logUnexpected('manifest', error);
       setStatus(error instanceof AssetApiError ? error.message : describeApiError('internal'), true);
       render();
     } finally {
-      refreshButton.disabled = false;
+      refreshButton.disabled = jobBusy;
       refreshButton.classList.remove('spinning');
     }
+  }
+
+  async function readRole() {
+    try {
+      return roleFromClaims((await currentUser.getIdTokenResult()).claims);
+    } catch {
+      return null;
+    }
+  }
+
+  // Writer controls are a convenience; the API enforces the writer claim on every change.
+  function canWrite() {
+    return role === 'writer' && Boolean(vocabulary) && Boolean(commitSha) && accessState === 'ok';
   }
 
   function findAsset(assetId) {
@@ -193,7 +241,12 @@ function initAssetLibrary() {
   }
 
   function render() {
-    body.classList.toggle('showing-detail', Boolean(selectedAssetId));
+    body.classList.toggle('showing-detail', Boolean(selectedAssetId) || Boolean(uploadForm));
+    uploadButton.hidden = !canWrite();
+    uploadButton.disabled = jobBusy;
+    footer.textContent = role === 'writer'
+      ? 'Changes run through the INVASION asset pipeline and are committed to 3d-migration. Notes are read-only.'
+      : 'Read-only view of the INVASION manifest. Notes and states change only through the asset pipeline.';
     if (accessState === 'not_authorized') return renderAccessMessage();
     renderList();
     renderDetail();
@@ -245,6 +298,7 @@ function initAssetLibrary() {
         ]);
         button.addEventListener('click', () => {
           selectedAssetId = asset.assetId;
+          uploadForm = null;
           render();
           detail.scrollTop = 0;
         });
@@ -256,6 +310,11 @@ function initAssetLibrary() {
   }
 
   function renderDetail() {
+    if (uploadForm && canWrite()) {
+      detail.replaceChildren(uploadForm);
+      return;
+    }
+    uploadForm = null;
     const asset = findAsset(selectedAssetId);
     if (!asset) {
       detail.replaceChildren(el('div', { className: 'asset-empty' }, [
@@ -277,7 +336,8 @@ function initAssetLibrary() {
       el('h3', { text: displayValue(asset.displayName, asset.assetId) }),
       asset.needsManualReview
         ? el('span', { className: 'badge review', text: `Manual review required · ${asset.manualReviewRevisionIds.length} revision${asset.manualReviewRevisionIds.length === 1 ? '' : 's'}` })
-        : null
+        : null,
+      canWrite() ? writerAssetActions(asset) : null
     ]);
 
     const issues = asset.canonicalIssues.length
@@ -345,6 +405,13 @@ function initAssetLibrary() {
     if (!revision.openInRigCheckPath && !revision.previewImagePath) {
       actions.append(el('span', { className: 'revision-no-preview', text: 'No viewable model or image in this revision' }));
     }
+    const promotePanel = el('div', { className: 'revision-promote' });
+    if (canWrite() && revision.state === 'candidate') {
+      const promote = el('button', { className: 'button secondary asset-write-action', text: 'Promote…', attrs: { type: 'button' } });
+      promote.disabled = jobBusy;
+      promote.addEventListener('click', () => openPromoteForm(asset, revision, promotePanel, promote));
+      actions.append(promote);
+    }
 
     const files = el('table', { className: 'revision-files' }, [
       el('thead', {}, [el('tr', {}, ['Path', 'Role', 'Format', 'Size'].map((label) => el('th', { text: label })))]),
@@ -411,6 +478,7 @@ function initAssetLibrary() {
         review.required ? el('span', { className: 'badge review', text: 'Manual review' }) : null
       ]),
       actions,
+      promotePanel,
       preview,
       fieldList([
         ['Pipeline status', revision.pipelineStatus],
@@ -566,7 +634,396 @@ function initAssetLibrary() {
     }
   }
 
+
+  // ------------------------------------------------------------------------------------------------ writer jobs
+
+  function formField(label, control, hint) {
+    const error = el('span', { className: 'asset-form-error', attrs: { role: 'alert' } });
+    const field = el('label', { className: 'asset-form-field' }, [
+      el('span', { className: 'asset-form-label', text: label }),
+      control,
+      hint ? el('span', { className: 'asset-form-hint', text: hint }) : null,
+      error
+    ]);
+    return { field, control, error };
+  }
+
+  function choice(options, value, blankLabel) {
+    const node = el('select');
+    node.append(el('option', { text: blankLabel, attrs: { value: '' } }));
+    for (const option of options) node.append(el('option', { text: option, attrs: { value: option } }));
+    node.value = options.includes(value) ? value : '';
+    return node;
+  }
+
+  function setJobBusy(value) {
+    jobBusy = value;
+    refreshButton.disabled = value;
+    uploadButton.disabled = value;
+    for (const button of overlay.querySelectorAll('.asset-write-action')) button.disabled = value;
+  }
+
+  function apiErrorMessage(error) {
+    if (!(error instanceof AssetApiError)) return describeApiError('internal');
+    if (error.code === 'rate_limited' && error.retryAfterSeconds) return `${error.message} Try again in about ${Math.ceil(error.retryAfterSeconds / 60)} min.`;
+    return error.message;
+  }
+
+  function writerAssetActions(asset) {
+    const upload = el('button', { className: 'button secondary asset-write-action', text: 'Upload candidate', attrs: { type: 'button' } });
+    upload.addEventListener('click', () => openUploadForm(asset));
+    const validate = el('button', { className: 'button ghost asset-write-action', text: 'Re-validate', attrs: { type: 'button', title: 'Re-run the pipeline inspections for this asset (read-only)' } });
+    validate.addEventListener('click', () => startAndTrack('/api/jobs/validate', { assetId: asset.assetId, recheck: true }));
+    for (const button of [upload, validate]) button.disabled = jobBusy;
+    return el('div', { className: 'asset-write-actions' }, [upload, validate]);
+  }
+
+  // ---- job tray: the one place a job's progress, review and outcome are shown
+
+  function clearTray() {
+    tray = null;
+    jobTray.hidden = true;
+    jobTray.replaceChildren();
+  }
+
+  function renderTray() {
+    if (!tray) return clearTray();
+    const { job } = tray;
+    const close = jobBusy ? null : el('button', { className: 'asset-icon-button', text: '×', attrs: { type: 'button', 'aria-label': 'Dismiss job' } });
+    close?.addEventListener('click', clearTray);
+    const head = el('header', { className: 'asset-job-head' }, [
+      el('strong', { text: tray.title ?? (job ? jobStatusText(job) : 'Working…') }),
+      el('span', { className: 'asset-job-meta' }, [
+        job ? el('span', { className: 'code dim', text: `job ${job.jobId}` }) : null,
+        job?.baseSha ? el('span', { className: 'code dim', text: `base ${shortSha(job.baseSha)}` }) : null,
+        job?.runUrl ? el('a', { text: 'View run', attrs: { href: job.runUrl, target: '_blank', rel: 'noopener noreferrer' } }) : null
+      ]),
+      close
+    ]);
+    const parts = [head];
+    if (job && !isTerminalJob(job) && !tray.title) parts.push(el('div', { className: 'asset-job-progress', attrs: { role: 'progressbar', 'aria-label': 'Job running' } }));
+    if (tray.message) parts.push(el('p', { className: `asset-job-message${tray.isError ? ' error' : ''}`, text: tray.message }));
+    if (job && isTerminalJob(job)) parts.push(...jobOutcome(job));
+    if (tray.staleBase || job?.error?.code === 'stale_base') parts.push(refreshPrompt());
+    jobTray.replaceChildren(...parts.filter(Boolean));
+    jobTray.hidden = false;
+    return undefined;
+  }
+
+  function refreshPrompt() {
+    const refresh = el('button', { className: 'button secondary', text: 'Refresh manifest', attrs: { type: 'button' } });
+    refresh.disabled = jobBusy;
+    refresh.addEventListener('click', () => loadManifest());
+    return el('div', { className: 'asset-job-actions' }, [refresh]);
+  }
+
+  function issueList(items, severity = 'warning') {
+    return el('ul', { className: 'issue-list' }, items.map((item) => el('li', { className: `severity-${severity}` }, [el('span', { text: item })])));
+  }
+
+  function jobOutcome(job) {
+    if (job.status === 'error') {
+      const detailText = job.result?.pipeline?.error;
+      return [
+        el('p', { className: 'asset-job-message error', text: describeJobError(job) }),
+        job.mutation ? el('p', { className: 'dim', text: job.pushed ? `Commit ${shortSha(job.commitSha)} was pushed.` : 'Nothing was committed to 3d-migration.' }) : null,
+        typeof detailText === 'string' && detailText !== describeJobError(job) ? el('p', { className: 'dim', text: detailText }) : null
+      ];
+    }
+    if (job.operation === 'ingest') {
+      const summary = summarizeIngest(job);
+      return [
+        el('p', { className: 'asset-job-message', text: `Candidate ${displayValue(summary.revisionId)} was recorded for ${displayValue(summary.assetId)} and committed to 3d-migration as ${shortSha(job.commitSha) ?? UNKNOWN}.` }),
+        summary.files.length ? fileChangeTable(['File', 'Role', 'Size'], summary.files.map((file) => [file.path, file.role, formatBytes(file.sizeBytes)])) : null,
+        summary.warnings.length ? issueList(summary.warnings) : null
+      ];
+    }
+    if (job.operation === 'promote_confirm') {
+      const integration = job.result?.pipeline?.result?.integration_required;
+      return [
+        el('p', { className: 'asset-job-message', text: `${displayValue(job.params?.revision_id)} is now canonical for ${displayValue(job.params?.asset_id)}, committed to 3d-migration as ${shortSha(job.commitSha) ?? UNKNOWN}.` }),
+        typeof integration === 'string' ? el('p', { className: 'dim', text: integration }) : null
+      ];
+    }
+    if (job.operation === 'validate') {
+      const summary = summarizeValidation(job);
+      if (!summary.available) return [el('p', { className: 'dim', text: 'The validation result is too large to show here; see the run on GitHub.' })];
+      return [
+        el('p', { className: 'asset-job-message', text: `${summary.ok ? 'Valid' : 'Not valid'} · ${summary.counts.error} errors · ${summary.counts.warning} warnings · ${summary.freshInspections} files re-inspected` }),
+        summary.findings.length ? el('ul', { className: 'issue-list' }, summary.findings.map((finding) => el('li', { className: `severity-${finding.severity}` }, [
+          el('span', { className: 'issue-severity', text: String(finding.severity).toUpperCase() }),
+          el('span', { text: finding.text })
+        ]))) : null,
+        summary.more ? el('p', { className: 'dim', text: `${summary.more} more findings are in the run result.` }) : null
+      ];
+    }
+    if (job.operation === 'promote_dry_run') return dryRunReview(job);
+    return [];
+  }
+
+  function fileChangeTable(headings, rows) {
+    return el('table', { className: 'revision-files' }, [
+      el('thead', {}, [el('tr', {}, headings.map((label) => el('th', { text: label })))]),
+      el('tbody', {}, rows.map((cells) => el('tr', {}, cells.map((cell, index) => el('td', { className: /file/i.test(headings[index]) ? 'code' : undefined, text: displayValue(cell) })))))
+    ]);
+  }
+
+  // Renders the pipeline's own dry-run payload, then gates "Confirm promotion" on it.
+  function dryRunReview(job) {
+    const summary = summarizeDryRun(job);
+    if (!summary.available) return [el('p', { className: 'asset-job-message error', text: 'The dry-run result could not be read; run the dry run again.' })];
+    const asset = findAsset(summary.assetId);
+    const stale = summary.baseSha !== commitSha;
+    const fields = fieldList([
+      ['Selected candidate', summary.revisionId, { code: true }],
+      ['Current canonical', summary.previousCanonical ?? asset?.canonicalRevisionId, { code: true, fallback: 'None' }],
+      ['Manifest change', `${summary.revisionId} becomes canonical${summary.previousCanonical ? `; ${summary.previousCanonical} becomes superseded` : ''}`, { wide: true }],
+      ['Validation', summary.warningsReadable ? (summary.warnings.length ? `${summary.warnings.length} warning${summary.warnings.length === 1 ? '' : 's'} (listed below)` : 'No warnings') : 'The warning list could not be read', { wide: true }],
+      ['Git LFS rules to add', summary.lfsRulesToAdd.length ? summary.lfsRulesToAdd.join(', ') : 'None', { wide: true, code: true }],
+      ['Godot integration', summary.integrationRequired, { wide: true, prose: true, fallback: NOT_AVAILABLE }]
+    ]);
+    const files = summary.files.length
+      ? fileChangeTable(['Candidate file', 'Canonical file', 'Role', 'Size'], summary.files.map((file) => [file.from, file.to, file.role, formatBytes(file.sizeBytes)]))
+      : null;
+    const confirm = el('button', { className: 'button primary', text: 'Confirm promotion', attrs: { type: 'button' } });
+    let accept = null;
+    let acceptRow = null;
+    if (summary.requiresAcceptance) {
+      accept = el('input', { attrs: { type: 'checkbox' } });
+      acceptRow = el('label', { className: 'asset-accept' }, [accept, el('span', {
+        text: summary.warningsReadable
+          ? `I reviewed the ${summary.warnings.length} warning${summary.warnings.length === 1 ? '' : 's'} above and accept ${summary.warnings.length === 1 ? 'it' : 'them'} for this promotion.`
+          : 'The warning list could not be read. I accept the promotion without reviewing it.'
+      })]);
+      accept.addEventListener('change', () => { confirm.disabled = !canConfirm(); });
+    }
+    const canConfirm = () => !jobBusy && !stale && !job.confirmJobId && canWrite() && (!accept || accept.checked);
+    confirm.disabled = !canConfirm();
+    confirm.addEventListener('click', () => {
+      if (!canConfirm()) return;
+      startAndTrack('/api/jobs/promote', buildPromoteConfirmRequest(job, accept?.checked), { refreshOnDone: true });
+    });
+    return [
+      el('p', { className: 'asset-job-message', text: 'Dry run finished. Nothing has changed yet. Review the promotion below.' }),
+      fields,
+      summary.warnings.length ? issueList(summary.warnings) : null,
+      files,
+      acceptRow,
+      stale ? el('p', { className: 'asset-job-message error', text: 'The branch changed since this dry run. Run the dry run again before confirming.' }) : null,
+      job.confirmJobId ? el('p', { className: 'dim', text: 'This dry run has already been confirmed.' }) : null,
+      el('div', { className: 'asset-job-actions' }, [confirm])
+    ];
+  }
+
+  async function fetchJob(jobId) {
+    return (await apiGet({ base: API_BASE, path: `/api/jobs/${encodeURIComponent(jobId)}`, getIdToken })).job;
+  }
+
+  // Follows a job until it finishes. Transient polling failures keep the last known state and retry.
+  async function follow(job, generation) {
+    let last = job;
+    tray = { job };
+    renderTray();
+    return pollJob({
+      getJob: async () => {
+        try {
+          last = await fetchJob(job.jobId);
+        } catch (error) {
+          if (!(error instanceof AssetApiError) || !['network', 'upstream_error', 'internal', 'rate_limited'].includes(error.code)) throw error;
+        }
+        return last;
+      },
+      onUpdate: (current) => {
+        if (generation !== pollGeneration) return;
+        tray = { job: current };
+        renderTray();
+      },
+      isCancelled: () => generation !== pollGeneration
+    });
+  }
+
+  async function startAndTrack(path, body, { refreshOnDone = false } = {}) {
+    if (jobBusy || !canWrite()) return null;
+    setJobBusy(true);
+    const generation = ++pollGeneration;
+    tray = { title: 'Starting the job…' };
+    renderTray();
+    try {
+      const { job } = await apiPost({ base: API_BASE, path, body, getIdToken });
+      const final = await follow(job, generation);
+      if (refreshOnDone && final?.status === 'done') await loadManifest();
+      return final;
+    } catch (error) {
+      logUnexpected('job', error);
+      tray = { job: tray?.job, title: tray?.job ? 'Lost track of the job' : 'The job did not start', message: apiErrorMessage(error), isError: true, staleBase: error?.code === 'stale_base' };
+      return null;
+    } finally {
+      setJobBusy(false);
+      renderTray();
+    }
+  }
+
+  // ---- upload candidate
+
+  function uploadToStaging(file, path, onProgress) {
+    return new Promise((resolve, reject) => {
+      const task = uploadBytesResumable(storageRef(storage, path), file, { contentType: file.type || 'application/octet-stream' });
+      task.on('state_changed',
+        (snapshot) => onProgress(snapshot.totalBytes ? Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100) : 0),
+        (error) => reject(error?.code === 'storage/unauthorized'
+          ? new AssetApiError('writer_required', 403, 'Storage refused the upload. Asset Library write access and a supported file are required.')
+          : new AssetApiError('network', 0, 'The upload failed. Check your connection and try again.')),
+        () => resolve());
+    });
+  }
+
+  function openUploadForm(asset = null) {
+    if (!canWrite() || jobBusy) return;
+    uploadForm = buildUploadForm(asset);
+    render();
+    detail.scrollTop = 0;
+  }
+
+  function buildUploadForm(asset) {
+    const back = el('button', { className: 'text-button asset-back', text: asset ? '← Back to asset' : '← All assets', attrs: { type: 'button' } });
+    back.addEventListener('click', () => {
+      uploadForm = null;
+      selectedAssetId = asset?.assetId ?? null;
+      render();
+    });
+    const assetIds = grouped.categories.flatMap((category) => category.assets.map((entry) => entry.assetId)).filter(Boolean).sort();
+    const datalist = el('datalist', { attrs: { id: 'assetLibraryAssetIds' } }, assetIds.map((id) => el('option', { attrs: { value: id } })));
+
+    const file = formField('File', el('input', { attrs: { type: 'file', accept: vocabulary.supportedExtensions.join(',') } }),
+      `Supported: ${vocabulary.supportedExtensions.join(' ')} · up to ${formatBytes(vocabulary.maxUploadBytes)}`);
+    const assetId = formField('Asset ID', el('input', { attrs: { type: 'text', list: 'assetLibraryAssetIds', autocomplete: 'off', spellcheck: 'false', required: '' } }),
+      'An existing asset gets a new candidate revision; a new ID creates a new logical asset.');
+    assetId.control.value = asset?.assetId ?? '';
+    const known = el('span', { className: 'asset-form-hint' });
+    assetId.field.insertBefore(known, assetId.error);
+    const revisionId = formField('Revision ID (optional)', el('input', { attrs: { type: 'text', autocomplete: 'off', spellcheck: 'false' } }), 'Left blank, the pipeline derives it from the file contents.');
+    const displayName = formField('Display name (optional)', el('input', { attrs: { type: 'text', autocomplete: 'off' } }));
+    const category = formField('Category', choice(vocabulary.categories, asset?.category, 'Not set'), 'An existing asset keeps its category; it cannot change here.');
+    const fileRole = formField('File role', choice(vocabulary.roles, '', 'Automatic'), 'Automatic: source for .blend/.fbx/.psd, otherwise runtime.');
+    const note = formField('Note (optional)', el('textarea', { attrs: { rows: '3' } }));
+    const source = formField('Source / provenance (optional)', el('input', { attrs: { type: 'text', autocomplete: 'off' } }));
+    const creator = formField('Creator (optional)', el('input', { attrs: { type: 'text', autocomplete: 'off' } }));
+    const fields = { assetId, revisionId, displayName, category, role: fileRole, note, source, creator };
+
+    const describeKnown = () => {
+      const existing = findAsset(assetId.control.value.trim());
+      known.textContent = existing ? `Existing asset: ${displayValue(existing.displayName, existing.assetId)} · ${existing.categoryLabel} · ${existing.revisionCount} revision${existing.revisionCount === 1 ? '' : 's'}` : '';
+      if (existing?.category && !category.control.value) category.control.value = existing.category;
+    };
+    assetId.control.addEventListener('input', describeKnown);
+    describeKnown();
+
+    const submit = el('button', { className: 'button primary asset-write-action', text: 'Upload and ingest', attrs: { type: 'submit' } });
+    submit.disabled = jobBusy;
+    const form = el('form', { className: 'asset-form', attrs: { novalidate: '' } }, [
+      el('p', { className: 'dim', text: 'The INVASION asset pipeline ingests the file as a new candidate revision, and the job commits only the pipeline\'s own changes to 3d-migration. Nothing becomes canonical without a separate, reviewed promotion.' }),
+      file.field, datalist, assetId.field, revisionId.field, displayName.field, category.field, fileRole.field, note.field, source.field, creator.field,
+      el('div', { className: 'asset-job-actions' }, [submit])
+    ]);
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const values = Object.fromEntries(Object.entries(fields).map(([name, entry]) => [name, entry.control.value]));
+      const errors = checkIngestForm(values, vocabulary);
+      const fileError = checkUploadFile(file.control.files?.[0], vocabulary);
+      file.error.textContent = fileError ?? '';
+      for (const [name, entry] of Object.entries(fields)) entry.error.textContent = errors[name] ?? '';
+      if (fileError || Object.keys(errors).length) return;
+      submitUpload(file.control.files[0], values);
+    });
+    return el('section', { className: 'asset-upload' }, [
+      el('header', { className: 'asset-detail-head' }, [back, el('h3', { text: asset ? `Upload candidate for ${displayValue(asset.displayName, asset.assetId)}` : 'Upload candidate' })]),
+      form
+    ]);
+  }
+
+  async function submitUpload(file, values) {
+    if (jobBusy || !canWrite()) return;
+    setJobBusy(true);
+    const generation = ++pollGeneration;
+    const key = `${file.name}:${file.size}:${file.lastModified}`;
+    let job = null;
+    try {
+      let jobId = reusableUpload?.key === key ? reusableUpload.jobId : null;
+      if (!jobId) {
+        tray = { title: 'Reserving the upload…' };
+        renderTray();
+        const reservation = await apiPost({
+          base: API_BASE,
+          path: '/api/uploads',
+          body: { fileName: file.name, size: file.size, ...(file.type ? { contentType: file.type } : {}) },
+          getIdToken
+        });
+        await uploadToStaging(file, reservation.stagingPath, (percent) => {
+          tray = { title: `Uploading ${file.name} · ${percent}% of ${formatBytes(file.size)}` };
+          renderTray();
+        });
+        jobId = reservation.jobId;
+        reusableUpload = { key, jobId };
+      }
+      tray = { title: 'Starting the ingest job…' };
+      renderTray();
+      ({ job } = await apiPost({ base: API_BASE, path: '/api/jobs/ingest', body: buildIngestRequest(values, { jobId, baseSha: commitSha }), getIdToken }));
+      reusableUpload = null;
+      const final = await follow(job, generation);
+      if (final?.status === 'done') {
+        uploadForm = null;
+        selectedAssetId = values.assetId.trim();
+        await loadManifest();
+      }
+    } catch (error) {
+      logUnexpected('upload', error);
+      // These leave the reservation unused, so a retry with the same file skips the upload.
+      if (!['stale_base', 'mutation_in_progress', 'rate_limited', 'invalid_request', 'network', 'upstream_error', 'vocabulary_unavailable'].includes(error?.code) || job) reusableUpload = null;
+      tray = { job, title: job ? 'Lost track of the job' : 'The upload was not ingested', message: apiErrorMessage(error), isError: true, staleBase: error?.code === 'stale_base' };
+    } finally {
+      setJobBusy(false);
+      renderTray();
+    }
+  }
+
+  // ---- promote (always a dry run first)
+
+  function openPromoteForm(asset, revision, panel) {
+    if (panel.childElementCount) {
+      panel.replaceChildren();
+      return;
+    }
+    const displayName = formField('Display name', el('input', { attrs: { type: 'text', autocomplete: 'off' } }), asset.displayName ? null : 'Required: this asset has no display name yet.');
+    displayName.control.value = asset.displayName ?? '';
+    const category = formField('Category', choice(vocabulary.categories, asset.category, 'Not set'), asset.category ? null : 'Required: this asset has no category yet.');
+    const destination = formField('Destination (optional)', el('input', { attrs: { type: 'text', autocomplete: 'off', spellcheck: 'false', placeholder: `assets/${asset.category ?? '<category>'}/${asset.assetId}` } }),
+      'An unused directory under assets/. Left blank, the pipeline uses the placeholder path.');
+    const run = el('button', { className: 'button primary asset-write-action', text: 'Run dry run', attrs: { type: 'button' } });
+    run.disabled = jobBusy;
+    const cancel = el('button', { className: 'button ghost', text: 'Cancel', attrs: { type: 'button' } });
+    cancel.addEventListener('click', () => panel.replaceChildren());
+    run.addEventListener('click', () => {
+      const errors = checkIngestForm({ assetId: asset.assetId, displayName: displayName.control.value }, vocabulary);
+      displayName.error.textContent = errors.displayName ?? '';
+      if (errors.displayName) return;
+      startAndTrack('/api/jobs/promote', buildPromoteDryRunRequest({
+        baseSha: commitSha,
+        assetId: asset.assetId,
+        revisionId: revision.revisionId,
+        displayName: displayName.control.value,
+        category: category.control.value,
+        destination: destination.control.value
+      }));
+    });
+    panel.replaceChildren(el('div', { className: 'asset-form compact' }, [
+      el('p', { className: 'dim', text: `Promote ${revision.revisionId} to canonical. This starts with a dry run; nothing changes until you review it and confirm.` }),
+      displayName.field, category.field, destination.field,
+      el('div', { className: 'asset-job-actions' }, [run, cancel])
+    ]));
+  }
+
   assetButton.addEventListener('click', openLibrary);
+  uploadButton.addEventListener('click', () => openUploadForm(null));
   closeButton.addEventListener('click', closeLibrary);
   refreshButton.addEventListener('click', () => loadManifest());
   searchInput.addEventListener('input', renderList);
@@ -586,6 +1043,13 @@ function initAssetLibrary() {
       commitSha = null;
       selectedAssetId = null;
       accessState = 'idle';
+      role = null;
+      vocabulary = null;
+      uploadForm = null;
+      reusableUpload = null;
+      pollGeneration += 1;
+      jobBusy = false;
+      clearTray();
       if (!user && !overlay.hidden) closeLibrary();
       if (user && !overlay.hidden) loadManifest();
     }
