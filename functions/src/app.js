@@ -143,6 +143,10 @@ export function createApp({
     res.status(202).json({ job: publicJob(await jobs.startValidate(req.assetUser, req.body)) });
   });
 
+  app.get('/api/jobs', async (req, res) => {
+    res.json({ jobs: await jobs.listJobs(req.query.asset) });
+  });
+
   app.get('/api/jobs/:jobId', async (req, res) => {
     res.json({ job: publicJob(await jobs.getJob(req.params.jobId)) });
   });

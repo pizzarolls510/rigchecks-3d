@@ -673,3 +673,49 @@ test('malformed bodies, malformed job IDs and unknown jobs get clear errors; POS
     assert.match(preflight.headers.get('access-control-allow-headers'), /Content-Type/);
   });
 });
+
+test('recent jobs for an asset can be listed by any role, newest first, without their results', async () => {
+  const { app, github, time, store } = harness();
+  await withServer(app, async (server) => {
+    const first = (await post(server, '/api/jobs/validate', { assetId: 'sample_asset', recheck: true })).body.job;
+    completeRun(github, time, first.runId, runnerResult(first, { pipeline: { ok: true, result: { findings: [], fresh_inspections: [], production: [] } } }));
+    await poll(server, time, first.jobId);
+    time.now += MINUTE;
+    const second = (await post(server, '/api/jobs/promote', { dryRun: true, baseSha: HEAD_A, assetId: 'sample_asset', revisionId: 'r_1' })).body.job;
+    time.now += MINUTE;
+    await post(server, '/api/jobs/validate', { assetId: 'other_asset' });
+    await post(server, '/api/uploads', { fileName: 'pending.glb', size: 4 }); // an unused reservation has no asset yet
+    await reserveAndStage(server, store);
+
+    for (const token of ['reader', 'writer']) {
+      const list = await server.request('/api/jobs?asset=sample_asset', { token });
+      assert.equal(list.status, 200, list.text);
+      assert.deepEqual(list.body.jobs.map((job) => [job.jobId, job.operation, job.status]), [
+        [second.jobId, 'promote_dry_run', 'queued'],
+        [first.jobId, 'validate', 'done']
+      ]);
+      assert.equal(list.body.jobs[1].hasResult, true);
+      assert.equal(list.body.jobs[0].revisionId, 'r_1');
+      assert.equal('result' in list.body.jobs[1] || 'resultJson' in list.body.jobs[1], false, 'lists never carry results');
+    }
+    assert.equal((await server.request('/api/jobs?asset=sample_asset')).status, 401);
+    for (const query of ['', '?asset=', '?asset=Bad-ID', '?asset=../x', '?asset=a&asset=b']) {
+      const bad = await server.request(`/api/jobs${query}`, { token: 'reader' });
+      assert.equal(bad.status, 400, query);
+    }
+    assert.deepEqual((await server.request('/api/jobs?asset=nothing_here', { token: 'reader' })).body, { jobs: [] });
+  });
+});
+
+test('the job list is capped at the most recent ten', async () => {
+  const { app, time } = harness();
+  await withServer(app, async (server) => {
+    for (let i = 0; i < 12; i += 1) {
+      assert.equal((await post(server, '/api/jobs/validate', { assetId: 'sample_asset' })).status, 202);
+      time.now += 1000;
+    }
+    const list = await server.request('/api/jobs?asset=sample_asset', { token: 'reader' });
+    assert.equal(list.body.jobs.length, 10);
+    assert.equal(list.body.jobs[0].jobId, 'job-0012-test');
+  });
+});

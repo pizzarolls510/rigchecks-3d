@@ -16,6 +16,11 @@ export function createFirestoreDb(firestore) {
     async update(path, fields) {
       await doc(path).update(fields);
     },
+    // Equality on one field only (served by Firestore's automatic single-field indexes; no composite index needed).
+    async findEqual(collection, field, value, limit) {
+      const snapshot = await firestore.collection(collection).where(field, '==', value).limit(limit).get();
+      return snapshot.docs.map((document) => document.data());
+    },
     runTransaction(fn) {
       return firestore.runTransaction((transaction) => fn({
         get: async (path) => data(await transaction.get(doc(path))),

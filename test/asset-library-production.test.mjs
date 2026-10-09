@@ -95,3 +95,37 @@ test('ingest, dry-run and validation summaries carry the pipeline production res
     ['r_b', 'candidate', 'not_applicable']
   ]);
 });
+
+test('validation reports expose every re-inspected file with RigCheck measurements and validator messages', async () => {
+  const { summarizeInspections, operationLabel } = await import('../dist/lib/asset-library-jobs.js');
+  const job = { result: { pipeline: { ok: true, result: {
+    findings: [{ severity: 'warning', code: 'PRODUCTION_BUDGET', message: 'Hero: too many triangles' }, { severity: 'error', code: 'X', message: 'broken' }],
+    fresh_inspections: [
+      { path: 'assets/x/hero.glb', inspection: { format: 'glb', size_bytes: 2048, sha256: 'a'.repeat(64), technical: { status: 'pass', issues: [] },
+        model: { materials: [{ index: 0 }], animations: [{ index: 0, name: 'Walk' }] },
+        rig: { status: 'warning', result: { valid: true, triangles: 120000, meshes: 1, bones: 23, skins: 1, clips: 1,
+          metrics: { materials: { declared: 2, used: 1, primitivesWithoutMaterial: 0 }, skinnedMeshNodes: 1, drawCalls: 1, vertices: 60000,
+            images: [{ index: 0, mimeType: 'image/png', width: 2048, height: 1024 }, { index: 1, mimeType: 'image/ktx2', width: null, height: null }],
+            maxImageDimension: 2048, unmeasuredImages: 1, animations: ['Walk'], extensionsUsed: [] },
+          validation: { errorCount: 0, warningCount: 1, infoCount: 0, hintCount: 0, truncated: false, messages: [{ severity: 1, code: 'NODE_SKINNED_MESH_NON_ROOT', message: 'Skinned node is not root', pointer: '/nodes/0' }] } } } } },
+      { path: 'assets/x/hero_basecolor.jpg', inspection: { format: 'jpg', size_bytes: 300, technical: { status: 'warning', issues: [{ code: 'DEEP_INSPECTION_UNAVAILABLE', severity: 'warning' }] }, rig: { status: 'unknown', result: null } } },
+      { path: 'assets/x/legacy.glb', inspection: { format: 'glb', size_bytes: 10, technical: { status: 'pass', issues: [] }, model: { materials: [{}, {}, {}], animations: [] },
+        rig: { status: 'pass', result: { valid: true, triangles: 10, meshes: 1, bones: 0, skins: 0, clips: 0, validation: { errorCount: 0, warningCount: 0, infoCount: 0, hintCount: 0, messages: [] } } } } }
+    ],
+    production: []
+  } } } };
+  const [hero, texture, legacy] = summarizeInspections(job);
+  assert.equal(hero.fileName, 'hero.glb');
+  assert.deepEqual([hero.model.triangles, hero.model.materialsUsed, hero.model.materialsDeclared, hero.model.skinnedMeshes, hero.model.bones, hero.model.maxTexture], [120000, 1, 2, 1, 23, 2048]);
+  assert.deepEqual(hero.model.textures, [{ width: 2048, height: 1024, mimeType: 'image/png' }, { width: null, height: null, mimeType: 'image/ktx2' }]);
+  assert.deepEqual(hero.model.validator.messages, [{ severity: 'warning', code: 'NODE_SKINNED_MESH_NON_ROOT', message: 'Skinned node is not root', pointer: '/nodes/0' }]);
+  assert.equal(texture.model, null, 'texture files have no model section');
+  assert.match(texture.technicalIssues[0].text, /content is not inspected/);
+  assert.equal(legacy.model.textures, null, 'an older RigCheck result has no texture data rather than an empty list');
+  assert.equal(legacy.model.materialsDeclared, 3, 'falls back to the declared materials the pipeline extracted');
+  assert.equal(legacy.model.materialsUsed, null);
+  assert.deepEqual(summarizeValidation(job).allFindings.map((f) => f.severity), ['warning', 'error']);
+  assert.equal(operationLabel('validate'), 'Re-validation');
+  assert.equal(operationLabel('nope'), 'Job');
+  assert.deepEqual(summarizeInspections({}), []);
+});

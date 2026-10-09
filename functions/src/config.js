@@ -58,6 +58,8 @@ export const RUN_DISCOVERY_TIMEOUT_MS = 15 * 60 * 1000;
 export const ARTIFACT_GRACE_MS = 90 * 1000;
 export const MAX_ARTIFACT_BYTES = 5 * 1024 * 1024;
 export const MAX_CACHED_RESULT_CHARS = 800 * 1024;
+export const JOB_LIST_LIMIT = 10;
+export const JOB_LIST_SCAN_LIMIT = 200;
 
 export const DEFAULT_CONFIG = Object.freeze({
   githubOwner: GITHUB_OWNER,
@@ -84,6 +86,8 @@ export const DEFAULT_CONFIG = Object.freeze({
   artifactGraceMs: ARTIFACT_GRACE_MS,
   maxArtifactBytes: MAX_ARTIFACT_BYTES,
   maxCachedResultChars: MAX_CACHED_RESULT_CHARS,
+  jobListLimit: JOB_LIST_LIMIT,
+  jobListScanLimit: JOB_LIST_SCAN_LIMIT,
   jobsCollection: JOBS_COLLECTION,
   lockDoc: LOCK_DOC,
   rateCollection: RATE_COLLECTION

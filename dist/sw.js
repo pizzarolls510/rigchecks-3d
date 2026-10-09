@@ -1,4 +1,4 @@
-const CACHE = "rigcheck-v0.4.10";
+const CACHE = "rigcheck-v0.4.11";
 const APP_SHELL = [
   "./",
   "./index.html",

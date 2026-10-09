@@ -210,6 +210,13 @@ export function createFakeDb() {
       if (!docs.has(path)) throw Object.assign(new Error(`NOT_FOUND: ${path}`), { code: 5 });
       docs.set(path, { ...docs.get(path), ...clone(fields) });
     },
+    async findEqual(collection, field, value, limit) {
+      const read = (data, dotted) => dotted.split('.').reduce((current, key) => current?.[key], data);
+      return [...docs.entries()]
+        .filter(([path, data]) => path.startsWith(`${collection}/`) && path.split('/').length === 2 && read(data, field) === value)
+        .slice(0, limit)
+        .map(([, data]) => clone(data));
+    },
     runTransaction(fn) {
       const run = queue.then(async () => {
         const writes = [];

@@ -110,7 +110,7 @@ match /users/{uid}/{allPaths=**} {
 ## Service worker — read before deploying
 
 `sw.js` precaches an explicit `APP_SHELL` list under a versioned cache key
-(currently `rigcheck-v0.4.10`). Two rules follow from that:
+(currently `rigcheck-v0.4.11`). Two rules follow from that:
 
 1. **Adding a file to `dist/` is not enough.** If it is part of the shell it must
    be added to `APP_SHELL`, or installed clients never fetch it.
@@ -165,7 +165,14 @@ Writers can also change the manifest, but only through INVASION's own asset pipe
   and manifest changes. **Confirm promotion** is never automatic. The confirm names only that dry run and
   inherits all of its parameters and base commit; it must come from the same user, and must accept warnings
   explicitly whenever the dry run reported any. A blocked dry run offers no confirm.
-- **Re-validate**: `POST /api/jobs/validate` (read-only).
+- **Re-validate**: `POST /api/jobs/validate` (read-only). When it finishes, **Open full report** shows the complete
+  validation report inside RigCheck. That covers every re-inspected file with RigCheck's triangles, meshes,
+  materials, skinned meshes, bones, textures, clips and glTF-validator messages, plus production-budget results per
+  revision and all findings.
+- **Reports**: each asset lists its recent jobs (`GET /api/jobs?asset=<id>`, any role, newest ten, no results
+  inline). Any report can be reopened later from `GET /api/jobs/:id`'s stored result. A reopened dry-run review is
+  read-only: promoting always starts from a fresh dry run. The GitHub Actions run link is for technical
+  diagnostics only.
 - `GET /api/jobs/:id` maps the GitHub run to `queued | running | done | error`, reads the
   `asset-job-result` artifact, and caches the final result in Firestore (`assetLibraryJobs`).
 

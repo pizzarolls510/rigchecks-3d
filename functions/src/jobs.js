@@ -16,6 +16,8 @@ import {
 } from './runner-contract.js';
 
 const UID = /^[A-Za-z0-9_-]{1,128}$/;
+// Syntactic screening only (the pipeline's ID rule); listing reads job metadata, never the manifest.
+const LIST_ASSET_ID = /^[a-z][a-z0-9_]{0,63}$/;
 const CONTENT_TYPE = /^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,63}\/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,63}$/;
 const MAX_ERROR_MESSAGE = 2000;
 
@@ -73,6 +75,25 @@ function parseResult(job) {
   } catch {
     return null;
   }
+}
+
+// A list entry: enough to choose a report, never the result itself (GET /api/jobs/:id returns that).
+export function jobSummary(job) {
+  return {
+    jobId: job.jobId,
+    operation: job.operation,
+    status: job.status,
+    ok: job.ok ?? null,
+    createdAt: new Date(job.createdAt).toISOString(),
+    updatedAt: new Date(job.updatedAt).toISOString(),
+    createdBy: job.uid,
+    baseSha: job.baseSha ?? null,
+    revisionId: job.params?.revision_id ?? null,
+    commitSha: job.commitSha ?? null,
+    errorCode: job.error?.code ?? null,
+    hasResult: typeof job.resultJson === 'string',
+    resultTruncated: Boolean(job.resultTruncated)
+  };
 }
 
 export function publicJob(job) {
@@ -461,6 +482,17 @@ export function createJobService({ db, github, store, source, vocabulary, config
     return finish(jobId, terminalFields(result, run));
   }
 
+  // Recent jobs for one asset, newest first, so a dismissed report can be reopened. Read-only; any role.
+  async function listJobs(assetId) {
+    if (typeof assetId !== 'string' || !LIST_ASSET_ID.test(assetId)) throw invalid('A valid asset ID is required.');
+    const jobs = await db.findEqual(config.jobsCollection, 'params.asset_id', assetId, config.jobListScanLimit);
+    return jobs
+      .filter((job) => job.status !== 'awaiting_upload')
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, config.jobListLimit)
+      .map(jobSummary);
+  }
+
   async function getJob(jobId) {
     requiredId(jobId, JOB_ID, 'job ID');
     const job = await refresh(jobId);
@@ -481,6 +513,7 @@ export function createJobService({ db, github, store, source, vocabulary, config
       checkUser(user);
       return startValidate(user, body);
     },
-    getJob
+    getJob,
+    listJobs
   };
 }

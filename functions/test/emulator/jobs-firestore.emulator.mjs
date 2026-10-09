@@ -152,3 +152,19 @@ test('concurrent polls of a finishing job record one terminal state', async () =
     await server.close();
   }
 });
+
+test('listing an asset\'s jobs queries the nested params.asset_id field in real Firestore', async () => {
+  const { app } = harness();
+  const server = await listen(app);
+  try {
+    for (const assetId of ['sample_asset', 'other_asset', 'sample_asset']) {
+      assert.equal((await server.request('/api/jobs/validate', { method: 'POST', token: 'writer', json: { assetId } })).status, 202);
+    }
+    const list = await server.request('/api/jobs?asset=sample_asset', { token: 'reader' });
+    assert.equal(list.status, 200, list.text);
+    assert.equal(list.body.jobs.length, 2);
+    assert.ok(list.body.jobs.every((job) => job.operation === 'validate'));
+  } finally {
+    await server.close();
+  }
+});

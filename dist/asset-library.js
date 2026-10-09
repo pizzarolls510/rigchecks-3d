@@ -25,10 +25,12 @@ import {
   describeJobError,
   isTerminalJob,
   jobStatusText,
+  operationLabel,
   pollJob,
   roleFromClaims,
   summarizeDryRun,
   summarizeIngest,
+  summarizeInspections,
   summarizeValidation
 } from "./lib/asset-library-jobs.js";
 
@@ -107,6 +109,10 @@ function initAssetLibrary() {
   let pollGeneration = 0;
   let reusableUpload = null;
   let uploadForm = null;
+  // A saved job report shown in the detail pane (any role); survives re-renders like the upload form.
+  let reportView = null;
+  // The asset whose Reports list was last opened, so returning from a report keeps the list open.
+  let reportsOpenFor = null;
 
   const assetButton = el('button', {
     className: 'button ghost asset-library-button',
@@ -241,7 +247,7 @@ function initAssetLibrary() {
   }
 
   function render() {
-    body.classList.toggle('showing-detail', Boolean(selectedAssetId) || Boolean(uploadForm));
+    body.classList.toggle('showing-detail', Boolean(selectedAssetId) || Boolean(uploadForm) || Boolean(reportView));
     uploadButton.hidden = !canWrite();
     uploadButton.disabled = jobBusy;
     footer.textContent = role === 'writer'
@@ -299,6 +305,7 @@ function initAssetLibrary() {
         button.addEventListener('click', () => {
           selectedAssetId = asset.assetId;
           uploadForm = null;
+          reportView = null;
           render();
           detail.scrollTop = 0;
         });
@@ -310,6 +317,10 @@ function initAssetLibrary() {
   }
 
   function renderDetail() {
+    if (reportView) {
+      detail.replaceChildren(reportView);
+      return;
+    }
     if (uploadForm && canWrite()) {
       detail.replaceChildren(uploadForm);
       return;
@@ -377,7 +388,7 @@ function initAssetLibrary() {
         ...asset.groups[state].map((revision) => revisionCard(asset, revision))
       ]));
 
-    detail.replaceChildren(...[header, issues, summarySection, ...groups].filter(Boolean));
+    detail.replaceChildren(...[header, issues, summarySection, reportsBlock(asset), ...groups].filter(Boolean));
   }
 
   function detailsBlock(title, content, open = false) {
@@ -698,7 +709,7 @@ function initAssetLibrary() {
       el('span', { className: 'asset-job-meta' }, [
         job ? el('span', { className: 'code dim', text: `job ${job.jobId}` }) : null,
         job?.baseSha ? el('span', { className: 'code dim', text: `base ${shortSha(job.baseSha)}` }) : null,
-        job?.runUrl ? el('a', { text: 'View run', attrs: { href: job.runUrl, target: '_blank', rel: 'noopener noreferrer' } }) : null
+        job?.runUrl ? el('a', { text: 'GitHub run', attrs: { href: job.runUrl, target: '_blank', rel: 'noopener noreferrer', title: 'Technical diagnostics on GitHub Actions. The full report opens in RigCheck.' } }) : null
       ]),
       close
     ]);
@@ -723,8 +734,8 @@ function initAssetLibrary() {
     return el('ul', { className: 'issue-list' }, items.map((item) => el('li', { className: `severity-${severity}` }, [el('span', { text: item })])));
   }
 
-  function jobOutcome(job) {
-    if (job.status === 'error' && job.operation === 'promote_dry_run' && summarizeDryRun(job).available) return blockedReview(job);
+  function jobOutcome(job, options = {}) {
+    if (job.status === 'error' && job.operation === 'promote_dry_run' && summarizeDryRun(job).available) return blockedReview(job, options);
     if (job.status === 'error') {
       const detailText = job.result?.pipeline?.error;
       return [
@@ -753,21 +764,20 @@ function initAssetLibrary() {
       ];
     }
     if (job.operation === 'validate') {
+      if (options.inReport) return validationReport(job);
       const summary = summarizeValidation(job);
-      if (!summary.available) return [el('p', { className: 'dim', text: 'The validation result is too large to show here; see the run on GitHub.' })];
+      const failing = summary.production.filter((entry) => entry.production?.status === 'fail').length;
+      const open = el('button', { className: 'button primary', text: 'Open full report', attrs: { type: 'button' } });
+      open.addEventListener('click', () => openReport(job));
       return [
-        el('p', { className: 'asset-job-message', text: `${summary.ok ? 'Valid' : 'Not valid'} · ${summary.counts.error} errors · ${summary.counts.warning} warnings · ${summary.freshInspections} files re-inspected` }),
-        summary.findings.length ? el('ul', { className: 'issue-list' }, summary.findings.map((finding) => el('li', { className: `severity-${finding.severity}` }, [
-          el('span', { className: 'issue-severity', text: String(finding.severity).toUpperCase() }),
-          el('span', { text: finding.text })
-        ]))) : null,
-        summary.more ? el('p', { className: 'dim', text: `${summary.more} more findings are in the run result.` }) : null,
-        ...summary.production
-          .filter((entry) => entry.production && entry.production.status !== 'not_applicable')
-          .map((entry) => productionView(entry.production, { heading: `${entry.revisionId}${entry.canonicalState === 'canonical' ? ' (canonical)' : ''}` }))
+        el('p', { className: 'asset-job-message', text: summary.available
+          ? `${summary.ok ? 'Valid' : 'Not valid'} · ${summary.counts.error} errors · ${summary.counts.warning} warnings · ${summary.freshInspections} files re-inspected${failing ? ` · ${failing} revision${failing === 1 ? '' : 's'} over budget` : ''}`
+          : 'The validation finished.' }),
+        el('p', { className: 'dim', text: 'The full report (triangles, materials, textures, budgets, warnings and errors) opens here in RigCheck. It also stays under this asset\'s Reports.' }),
+        el('div', { className: 'asset-job-actions' }, [open])
       ];
     }
-    if (job.operation === 'promote_dry_run') return dryRunReview(job);
+    if (job.operation === 'promote_dry_run') return dryRunReview(job, options);
     return [];
   }
 
@@ -779,7 +789,7 @@ function initAssetLibrary() {
   }
 
   // Renders the pipeline's own dry-run payload, then gates "Confirm promotion" on it.
-  function dryRunReview(job) {
+  function dryRunReview(job, { readOnly = false } = {}) {
     const summary = summarizeDryRun(job);
     if (!summary.available) return [el('p', { className: 'asset-job-message error', text: 'The dry-run result could not be read; run the dry run again.' })];
     const asset = findAsset(summary.assetId);
@@ -813,6 +823,16 @@ function initAssetLibrary() {
       if (!canConfirm()) return;
       startAndTrack('/api/jobs/promote', buildPromoteConfirmRequest(job, accept?.checked), { refreshOnDone: true });
     });
+    if (readOnly) {
+      // A saved review: no acceptance or confirm here. Promoting always starts from a fresh dry run.
+      return [
+        el('p', { className: 'asset-job-message', text: job.confirmJobId ? 'Saved dry-run review. This dry run was confirmed.' : 'Saved dry-run review. To promote, click Promote… on the revision; that runs a fresh dry run first.' }),
+        fields,
+        productionView(summary.production, { open: true }),
+        summary.warnings.length ? issueList(summary.warnings) : null,
+        files
+      ];
+    }
     return [
       el('p', { className: 'asset-job-message', text: 'Dry run finished. Nothing has changed yet. Review the promotion below; it only happens when you confirm.' }),
       fields,
@@ -827,7 +847,7 @@ function initAssetLibrary() {
   }
 
   // A blocked dry run: every blocker the pipeline found, its production results and partial plan. No confirm.
-  function blockedReview(job) {
+  function blockedReview(job, { readOnly = false } = {}) {
     const summary = summarizeDryRun(job);
     const count = summary.blockers.length;
     return [
@@ -835,8 +855,171 @@ function initAssetLibrary() {
       issueList(summary.blockers, 'error'),
       productionView(summary.production, { open: summary.production?.status !== 'pass' }),
       summary.warnings.length ? detailsBlock(`Warnings (${summary.warnings.length})`, issueList(summary.warnings)) : null,
-      el('div', { className: 'asset-job-actions' }, [rerunButton(job)])
+      readOnly ? null : el('div', { className: 'asset-job-actions' }, [rerunButton(job)])
     ];
+  }
+
+  // ---- saved job reports, read in RigCheck (GitHub Actions stays a technical diagnostic link)
+
+  async function openReport(jobOrId) {
+    let job = typeof jobOrId === 'string' ? null : jobOrId;
+    try {
+      if (!job) job = await fetchJob(jobOrId);
+    } catch (error) {
+      logUnexpected('report', error);
+      setStatus(apiErrorMessage(error), true);
+      return;
+    }
+    uploadForm = null;
+    if (job.params?.asset_id && findAsset(job.params.asset_id)) selectedAssetId = job.params.asset_id;
+    reportView = reportShell(job);
+    render();
+    detail.scrollTop = 0;
+  }
+
+  function reportShell(job) {
+    const asset = findAsset(job.params?.asset_id);
+    // Unlike the phone-only list back button, this one is always shown: a report replaces the asset detail.
+    const back = el('button', { className: 'text-button asset-report-back', text: asset ? '← Back to asset' : '← All assets', attrs: { type: 'button' } });
+    back.addEventListener('click', () => {
+      reportView = null;
+      render();
+    });
+    const title = job.operation === 'validate' ? 'Validation report' : `${operationLabel(job.operation)} report`;
+    const checkedOut = job.result?.checked_out_sha ?? job.baseSha;
+    const meta = fieldList([
+      ['Asset', asset ? displayValue(asset.displayName, asset.assetId) : job.params?.asset_id, { fallback: NOT_AVAILABLE }],
+      ['Revision', job.params?.revision_id, { code: true, fallback: job.operation === 'validate' ? 'All revisions' : NOT_AVAILABLE }],
+      ['Finished', isTerminalJob(job) ? formatDate(job.updatedAt) : 'Still running', {}],
+      ['Repository state', shortSha(checkedOut), { code: true, fallback: NOT_AVAILABLE }],
+      ['Result', jobStatusText(job), { wide: true }]
+    ]);
+    const body = isTerminalJob(job) ? jobOutcome(job, { readOnly: true, inReport: true }) : [el('p', { className: 'dim', text: 'This job has not finished yet. Reopen the report when it has.' })];
+    const diagnostics = el('p', { className: 'dim asset-report-diagnostics' }, [
+      job.runUrl ? el('a', { text: 'GitHub Actions run', attrs: { href: job.runUrl, target: '_blank', rel: 'noopener noreferrer' } }) : null,
+      el('span', { text: `${job.runUrl ? ' · technical diagnostics only' : ''} · job ${job.jobId}` })
+    ]);
+    return el('section', { className: 'asset-report' }, [
+      el('header', { className: 'asset-detail-head' }, [back, el('h3', { text: title })]),
+      meta,
+      ...body.filter(Boolean),
+      diagnostics
+    ]);
+  }
+
+  function validationReport(job) {
+    const summary = summarizeValidation(job);
+    if (!summary.available) {
+      return [el('p', { className: 'asset-job-message error', text: job.resultTruncated
+        ? 'This report was too large to store in full. Its complete result file is attached to the GitHub Actions run below (kept for 7 days).'
+        : 'This report has no stored result.' })];
+    }
+    const files = summarizeInspections(job);
+    const production = summary.production.filter((entry) => entry.production);
+    return [
+      el('p', { className: `asset-job-message${summary.ok ? '' : ' error'}`, text: `${summary.ok ? 'Valid' : 'Not valid'} · ${summary.counts.error} errors · ${summary.counts.warning} warnings · ${summary.freshInspections} files re-inspected` }),
+      production.length ? el('section', { className: 'asset-report-section' }, [
+        el('h4', { text: 'Production budgets' }),
+        ...production.map((entry) => productionView(entry.production, { open: entry.production.status !== 'not_applicable', heading: `${entry.revisionId}${entry.canonicalState === 'canonical' ? ' (canonical)' : ''}` }))
+      ]) : null,
+      files.length ? el('section', { className: 'asset-report-section' }, [
+        el('h4', { text: `Files (${files.length})` }),
+        ...files.map(fileReport)
+      ]) : el('p', { className: 'dim', text: 'No files were re-inspected (the validation ran without a re-check).' }),
+      el('section', { className: 'asset-report-section' }, [
+        el('h4', { text: `Findings (${summary.allFindings.length})` }),
+        summary.allFindings.length
+          ? el('ul', { className: 'issue-list' }, summary.allFindings.map((finding) => el('li', { className: `severity-${finding.severity}` }, [
+            el('span', { className: 'issue-severity', text: String(finding.severity).toUpperCase() }),
+            el('span', { text: finding.text })
+          ])))
+          : el('p', { className: 'dim', text: 'No findings.' })
+      ])
+    ];
+  }
+
+  function fileReport(file) {
+    const model = file.model;
+    const head = el('header', { className: 'revision-head' }, [
+      el('span', { className: 'revision-id code', text: displayValue(file.fileName) }),
+      el('span', { className: 'chip', text: `${String(file.format ?? '').toUpperCase()} · ${formatBytes(file.sizeBytes)}` }),
+      el('span', { className: `badge production state-${file.technicalStatus === 'pass' ? 'pass' : file.technicalStatus === 'fail' ? 'fail' : 'warning'}`, text: `Technical: ${displayValue(file.technicalStatus)}` })
+    ]);
+    const parts = [head];
+    if (model) {
+      const textures = model.textures === null ? null
+        : model.textures.length ? model.textures.map((t) => `${t.width ?? '?'}×${t.height ?? '?'}${t.mimeType ? ` ${t.mimeType.replace('image/', '')}` : ''}${t.width === null ? ' (size not measured)' : ''}`).join(', ') : 'None';
+      parts.push(fieldList([
+        ['glTF validity', model.valid === null ? null : model.valid ? 'Valid' : 'Invalid'],
+        ['Triangles', model.triangles],
+        ['Meshes', model.meshes],
+        ['Materials', model.materialsUsed === null ? model.materialsDeclared : `${model.materialsUsed} used of ${displayValue(model.materialsDeclared, '?')}`],
+        ['Skinned meshes', model.skinnedMeshes],
+        ['Bones', model.bones],
+        ['Vertices', model.vertices],
+        ['Draw calls', model.drawCalls],
+        ['Largest texture', model.maxTexture === null ? null : `${model.maxTexture} px`],
+        ['Textures', textures, { wide: true }],
+        ['Animation clips', model.animations.length ? model.animations.join(', ') : 'None', { wide: true }]
+      ]));
+      const validator = model.validator;
+      if (validator) {
+        const counts = `${validator.errors} errors · ${validator.warnings} warnings · ${validator.infos} infos · ${validator.hints} hints${validator.truncated ? ' (list truncated)' : ''}`;
+        parts.push(validator.messages.length
+          ? detailsBlock(`glTF validator: ${counts}`, el('ul', { className: 'issue-list' }, validator.messages.map((message) => el('li', { className: `severity-${message.severity}` }, [
+            el('span', { className: 'issue-severity', text: message.severity.toUpperCase() }),
+            el('span', { className: 'code', text: displayValue(message.code) }),
+            el('span', { text: message.message }),
+            message.pointer ? el('span', { className: 'code dim', text: message.pointer }) : null
+          ]))), validator.errors + validator.warnings > 0)
+          : el('p', { className: 'dim', text: `glTF validator: ${counts}` }));
+      }
+    }
+    if (file.technicalIssues.length) {
+      parts.push(el('ul', { className: 'issue-list' }, file.technicalIssues.map((issue) => el('li', { className: `severity-${issue.severity}` }, [
+        el('span', { className: 'issue-severity', text: issue.severity.toUpperCase() }),
+        el('span', { className: 'code', text: displayValue(issue.code) }),
+        el('span', { text: issue.text })
+      ]))));
+    }
+    return el('article', { className: 'revision-card asset-report-file' }, parts);
+  }
+
+  // Recent jobs for this asset (any role): reopen a validation report or a saved dry-run review at any time.
+  function reportsBlock(asset) {
+    const list = el('div', { className: 'asset-reports' }, [el('p', { className: 'dim', text: 'Loading…' })]);
+    const block = detailsBlock('Reports', list);
+    block.addEventListener('toggle', async () => {
+      if (!block.open) {
+        if (reportsOpenFor === asset.assetId) reportsOpenFor = null;
+        return;
+      }
+      reportsOpenFor = asset.assetId;
+      list.replaceChildren(el('p', { className: 'dim', text: 'Loading…' }));
+      try {
+        const { jobs } = await apiGet({ base: API_BASE, path: '/api/jobs', params: { asset: asset.assetId }, getIdToken });
+        if (!jobs.length) {
+          list.replaceChildren(el('p', { className: 'dim', text: 'No reports yet. Re-validate, upload or promote to create one.' }));
+          return;
+        }
+        list.replaceChildren(...jobs.map((entry) => {
+          const open = el('button', { className: 'button secondary', text: 'Open', attrs: { type: 'button' } });
+          open.addEventListener('click', () => openReport(entry.jobId));
+          const state = entry.status === 'done' ? 'pass' : entry.status === 'error' ? 'fail' : 'not_verified';
+          return el('div', { className: 'asset-report-row' }, [
+            el('span', { className: 'asset-report-name', text: `${operationLabel(entry.operation)}${entry.revisionId ? ` · ${entry.revisionId}` : ''}` }),
+            el('span', { className: 'dim', text: formatDate(entry.createdAt) }),
+            el('span', { className: `badge production state-${state}`, text: entry.status === 'done' ? 'Finished' : entry.status === 'error' ? `Failed${entry.errorCode ? ` · ${entry.errorCode}` : ''}` : 'In progress' }),
+            open
+          ]);
+        }));
+      } catch (error) {
+        logUnexpected('reports', error);
+        list.replaceChildren(el('p', { className: 'asset-job-message error', text: apiErrorMessage(error) }));
+      }
+    });
+    if (reportsOpenFor === asset.assetId) block.open = true; // fires "toggle", which reloads the list
+    return block;
   }
 
   function rerunButton(job) {
@@ -1148,6 +1331,7 @@ function initAssetLibrary() {
       role = null;
       vocabulary = null;
       uploadForm = null;
+      reportView = null;
       reusableUpload = null;
       pollGeneration += 1;
       jobBusy = false;

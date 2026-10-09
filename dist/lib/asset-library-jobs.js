@@ -102,6 +102,10 @@ const OPERATION_LABELS = {
   validate: 'Re-validation'
 };
 
+export function operationLabel(operation) {
+  return OPERATION_LABELS[operation] ?? 'Job';
+}
+
 export function jobStatusText(job) {
   const label = OPERATION_LABELS[job?.operation] ?? 'Job';
   switch (job?.status) {
@@ -185,6 +189,7 @@ export function summarizeValidation(job) {
     freshInspections: asArray(result?.fresh_inspections).length,
     findings: findings.slice(0, 50).map((finding) => ({ severity: finding?.severity ?? 'info', text: issueText(finding) })),
     more: Math.max(0, findings.length - 50),
+    allFindings: findings.map((finding) => ({ severity: ['error', 'warning'].includes(finding?.severity) ? finding.severity : 'info', text: issueText(finding) })),
     production: asArray(result?.production).map((entry) => ({
       revisionId: entry?.revision_id ?? null,
       canonicalState: entry?.canonical_state ?? null,
@@ -204,4 +209,77 @@ export async function pollJob({ getJob, onUpdate = () => {}, intervalMs = POLL_I
     if (now() - started > timeoutMs) return job;
     await wait(intervalMs);
   }
+}
+
+const VALIDATOR_SEVERITIES = ['error', 'warning', 'info', 'hint'];
+const TECHNICAL_EXPLANATIONS = {
+  DEEP_INSPECTION_UNAVAILABLE: 'Only the file type, signature, size and hash are checked for this format; its content is not inspected.',
+  RIGCHECK_UNAVAILABLE: 'RigCheck could not inspect this model.'
+};
+
+function severityName(value) {
+  if (typeof value === 'number') return VALIDATOR_SEVERITIES[value] ?? 'info';
+  return VALIDATOR_SEVERITIES.includes(value) ? value : 'info';
+}
+
+function count(value) {
+  return Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+// One entry per file the pipeline re-inspected (validate --recheck), as recorded in the job result: identity,
+// technical status and, for GLBs, RigCheck's measurements and glTF-validator diagnostics. Nothing is computed here.
+export function summarizeInspections(job) {
+  return asArray(job?.result?.pipeline?.result?.fresh_inspections).map((entry) => {
+    const inspection = entry?.inspection ?? {};
+    const rig = inspection.rig ?? {};
+    const result = rig.result && typeof rig.result === 'object' ? rig.result : null;
+    const metrics = result?.metrics && typeof result.metrics === 'object' ? result.metrics : null;
+    const declaredMaterials = Array.isArray(inspection.model?.materials) ? inspection.model.materials.length : null;
+    const validation = result?.validation ?? null;
+    const path = typeof entry?.path === 'string' ? entry.path : null;
+    return {
+      path,
+      fileName: path ? path.slice(path.lastIndexOf('/') + 1) : null,
+      format: inspection.format ?? null,
+      sizeBytes: count(inspection.size_bytes),
+      sha256: inspection.sha256 ?? null,
+      technicalStatus: inspection.technical?.status ?? null,
+      technicalIssues: asArray(inspection.technical?.issues).map((issue) => ({
+        severity: severityName(issue?.severity),
+        code: issue?.code ?? null,
+        text: TECHNICAL_EXPLANATIONS[issue?.code] ?? issueText(issue)
+      })),
+      model: inspection.format === 'glb' ? {
+        rigStatus: rig.status ?? null,
+        valid: typeof result?.valid === 'boolean' ? result.valid : null,
+        triangles: count(result?.triangles),
+        meshes: count(result?.meshes),
+        bones: count(result?.bones),
+        skins: count(result?.skins),
+        clips: count(result?.clips),
+        materialsUsed: count(metrics?.materials?.used),
+        materialsDeclared: count(metrics?.materials?.declared) ?? declaredMaterials,
+        skinnedMeshes: count(metrics?.skinnedMeshNodes),
+        drawCalls: count(metrics?.drawCalls),
+        vertices: count(metrics?.vertices),
+        textures: metrics ? asArray(metrics.images).map((image) => ({ width: count(image?.width), height: count(image?.height), mimeType: image?.mimeType ?? null })) : null,
+        maxTexture: count(metrics?.maxImageDimension),
+        animations: metrics ? asArray(metrics.animations).filter((name) => typeof name === 'string')
+          : asArray(inspection.model?.animations).map((animation) => animation?.name).filter((name) => typeof name === 'string'),
+        validator: validation ? {
+          errors: count(validation.errorCount) ?? 0,
+          warnings: count(validation.warningCount) ?? 0,
+          infos: count(validation.infoCount) ?? 0,
+          hints: count(validation.hintCount) ?? 0,
+          truncated: validation.truncated === true,
+          messages: asArray(validation.messages).map((message) => ({
+            severity: severityName(message?.severity),
+            code: message?.code ?? null,
+            message: message?.message ?? '',
+            pointer: message?.pointer ?? null
+          }))
+        } : null
+      } : null
+    };
+  });
 }
