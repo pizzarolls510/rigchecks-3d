@@ -110,7 +110,7 @@ match /users/{uid}/{allPaths=**} {
 ## Service worker — read before deploying
 
 `sw.js` precaches an explicit `APP_SHELL` list under a versioned cache key
-(currently `rigcheck-v0.4.9`). Two rules follow from that:
+(currently `rigcheck-v0.4.10`). Two rules follow from that:
 
 1. **Adding a file to `dist/` is not enough.** If it is part of the shell it must
    be added to `APP_SHELL`, or installed clients never fetch it.
@@ -158,12 +158,23 @@ Writers can also change the manifest, but only through INVASION's own asset pipe
   `asset-library-staging/{uid}/{jobId}/` (Storage rules: writer only, own folder, supported type,
   ≤200 MB, deleted after 2 days); the browser uploads there; `POST /api/jobs/ingest` dispatches the
   runner with a 30-minute signed URL plus the size and MD5 Cloud Storage recorded.
-- **Promote**: always a dry run first (`POST /api/jobs/promote` with `dryRun: true`). The confirm
-  names only that dry run and inherits all of its parameters and base commit; it must come from the
-  same user, and must accept warnings explicitly whenever the dry run reported any.
+- **Promote**: clicking **Promote…** immediately starts the mandatory dry run
+  (`POST /api/jobs/promote` with `dryRun: true`) with the asset's recorded name and category. **Change
+  options** reruns it with a different destination, name or category, and **Run dry run again** repeats it at
+  the current commit. The review shows every blocker, the warnings, production compliance and the exact file
+  and manifest changes. **Confirm promotion** is never automatic. The confirm names only that dry run and
+  inherits all of its parameters and base commit; it must come from the same user, and must accept warnings
+  explicitly whenever the dry run reported any. A blocked dry run offers no confirm.
 - **Re-validate**: `POST /api/jobs/validate` (read-only).
 - `GET /api/jobs/:id` maps the GitHub run to `queued | running | done | error`, reads the
   `asset-job-result` artifact, and caches the final result in Firestore (`assetLibraryJobs`).
+
+**Production compliance** (budgets for triangles, materials, textures and skinning per asset type) is
+evaluated only by the INVASION asset pipeline, from RigCheck's measurements. It is recorded on new candidates
+and canonical revisions, and is part of every dry run and asset re-validation. The UI shows those results:
+Pass, Warning, Fail or Not verified per check, with actual and target values and what is outstanding before
+promotion. Over-budget models are still accepted as candidates. Visual quality, device performance and
+Godot/gameplay integration are always listed as **not verified**: no check here covers them.
 
 Every request is checked against the runner's input contract before dispatch. Mutations (ingest,
 promote confirm) also require the reviewed base commit to equal the live branch head, take a
@@ -195,6 +206,12 @@ rigcheck list --json
 ```
 
 All commands accept `--json`. Only `upload` accepts `--dry-run`; the other three commands are already read-only.
+
+`check` reports glTF validity plus active-scene statistics (`triangles`, `meshes`, `bones`, `skins`, `clips`).
+Its `metrics` object adds measurement-only values: materials declared and used, mesh and skinned-mesh nodes,
+draw calls, vertices, every embedded image's decoded width and height (`null` when it cannot be decoded), the
+largest texture dimension, animation names and the extensions used. RigCheck applies no content budgets;
+callers such as the INVASION pipeline compare these values with their own policy.
 
 ### Configure the owner
 

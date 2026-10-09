@@ -2,6 +2,7 @@
 // imports, so they are unit-tested in Node. The browser only pre-checks for fast feedback: the API re-checks
 // everything against the asset pipeline at the reviewed commit, and the job runner checks again.
 import { describeApiError } from './asset-library-api.js';
+import { mapProduction } from './asset-library-model.js';
 
 export const TERMINAL_JOB_STATUSES = Object.freeze(['done', 'error']);
 export const POLL_INTERVAL_MS = 4000;
@@ -131,12 +132,18 @@ function issueText(issue) {
   return [issue?.code, issue?.message, issue?.location].filter((part) => typeof part === 'string' && part).join(' — ') || JSON.stringify(issue);
 }
 
-// The tool's own dry-run payload: selected candidate, current canonical, validation state, file/manifest changes.
+// The tool's own dry-run payload: selected candidate, current canonical, validation state, production
+// compliance, blockers and file/manifest changes. A blocked dry run carries the same partial plan.
 export function summarizeDryRun(job) {
-  const plan = job?.result?.pipeline?.result ?? null;
+  const pipeline = job?.result?.pipeline ?? null;
+  const plan = pipeline?.result ?? null;
   const warningsReadable = Array.isArray(plan?.warnings) && !job?.resultTruncated;
+  const blockers = asArray(pipeline?.blockers).map(issueText);
   return {
     available: Boolean(plan),
+    blocked: blockers.length > 0 || pipeline?.ok === false,
+    blockers: blockers.length ? blockers : (pipeline?.ok === false && typeof pipeline?.error === 'string' ? [pipeline.error] : []),
+    production: mapProduction(plan?.production),
     assetId: plan?.asset_id ?? job?.params?.asset_id ?? null,
     revisionId: plan?.revision_id ?? job?.params?.revision_id ?? null,
     previousCanonical: plan?.previous_canonical ?? null,
@@ -158,7 +165,8 @@ export function summarizeIngest(job) {
     assetId: report?.asset_id ?? job?.params?.asset_id ?? null,
     revisionId: report?.revision_id ?? null,
     files: asArray(report?.files).map((file) => ({ path: file?.path ?? null, role: file?.role ?? null, sizeBytes: file?.size_bytes ?? null })),
-    warnings: asArray(report?.warnings).map(issueText)
+    warnings: asArray(report?.warnings).map(issueText),
+    production: mapProduction(report?.production)
   };
 }
 
@@ -176,7 +184,12 @@ export function summarizeValidation(job) {
     counts,
     freshInspections: asArray(result?.fresh_inspections).length,
     findings: findings.slice(0, 50).map((finding) => ({ severity: finding?.severity ?? 'info', text: issueText(finding) })),
-    more: Math.max(0, findings.length - 50)
+    more: Math.max(0, findings.length - 50),
+    production: asArray(result?.production).map((entry) => ({
+      revisionId: entry?.revision_id ?? null,
+      canonicalState: entry?.canonical_state ?? null,
+      production: mapProduction(entry)
+    }))
   };
 }
 

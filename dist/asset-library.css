@@ -733,3 +733,100 @@ body.asset-library-open {
     font-size: 0.78rem;
   }
 }
+
+/* ---- Production compliance (recorded by the INVASION pipeline; read-only here) ---- */
+.badge.production {
+  text-transform: none;
+}
+
+.badge.production.state-pass { color: #8ff0c4; border-color: rgba(143, 240, 196, 0.4); }
+.badge.production.state-warning { color: #ffd27a; border-color: rgba(255, 210, 122, 0.45); }
+.badge.production.state-fail { color: #ff9a9a; border-color: rgba(255, 154, 154, 0.5); }
+.badge.production.state-not_verified,
+.badge.production.state-not_evaluated,
+.badge.production.state-not_applicable { color: var(--muted); border-color: var(--line); }
+
+.production-details > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.production {
+  display: grid;
+  gap: 8px;
+  padding-top: 6px;
+}
+
+.production p {
+  margin: 0;
+}
+
+.production-profile {
+  font-size: 0.86rem;
+}
+
+.production-checks {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.production-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 1.2fr) minmax(70px, 0.8fr) minmax(90px, 1fr) auto;
+  grid-template-areas: "label value target state" "message message message message";
+  align-items: baseline;
+  gap: 2px 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.84rem;
+}
+
+.production-label { grid-area: label; color: var(--muted); }
+.production-value { grid-area: value; font-variant-numeric: tabular-nums; }
+.production-target { grid-area: target; color: var(--dim); font-size: 0.78rem; }
+
+.production-state {
+  grid-area: state;
+  justify-self: end;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.production-state.state-pass { color: #8ff0c4; }
+.production-state.state-warning { color: #ffd27a; }
+.production-state.state-fail { color: #ff9a9a; }
+.production-state.state-not_verified,
+.production-state.state-not_evaluated,
+.production-state.state-info { color: var(--muted); }
+
+.production-message {
+  grid-area: message;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.production-outstanding {
+  display: grid;
+  gap: 4px;
+  font-size: 0.84rem;
+}
+
+@media (max-width: 430px) {
+  .production-row {
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "label state" "value target" "message message";
+  }
+
+  .production-target {
+    justify-self: end;
+  }
+}

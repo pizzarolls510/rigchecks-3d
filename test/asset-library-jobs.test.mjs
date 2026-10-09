@@ -101,7 +101,7 @@ test('the dry-run summary renders the tool payload and requires acceptance for a
 
 test('ingest and validation summaries tolerate missing fields', () => {
   assert.deepEqual(summarizeIngest({ params: { asset_id: 'a' }, result: { pipeline: { ok: true, result: { revision_id: 'r_x', files: [{ path: 'p', role: 'runtime', size_bytes: 3 }], warnings: ['w'] } } } }), {
-    available: true, assetId: 'a', revisionId: 'r_x', files: [{ path: 'p', role: 'runtime', sizeBytes: 3 }], warnings: ['w']
+    available: true, assetId: 'a', revisionId: 'r_x', files: [{ path: 'p', role: 'runtime', sizeBytes: 3 }], warnings: ['w'], production: null
   });
   assert.equal(summarizeIngest({}).available, false);
   const validation = summarizeValidation({ result: { pipeline: { ok: true, result: { findings: [{ severity: 'warning', code: 'ASSET_ISSUE' }, { severity: 'error', code: 'X' }, { code: 'Y' }], fresh_inspections: [1, 2] } } } });

@@ -34,6 +34,65 @@ const PREVIEW_ROLE_ORDER = ['runtime', 'source', 'reference', 'textures'];
 // glTF-Validator numeric severities as stored in rig.issues.
 const VALIDATOR_SEVERITIES = ['error', 'warning', 'info', 'hint'];
 
+// Production compliance is evaluated only by the INVASION pipeline (tools/asset_pipeline/production.py); these
+// helpers just label what it recorded. Unknown or missing values never read as a pass.
+const PRODUCTION_STATUS_LABELS = {
+  pass: 'Pass',
+  warning: 'Warning',
+  fail: 'Fail',
+  not_verified: 'Not verified',
+  not_evaluated: 'Not evaluated',
+  not_applicable: 'Not applicable',
+  info: 'Info'
+};
+
+export function productionStatusLabel(status) {
+  return PRODUCTION_STATUS_LABELS[status] ?? PRODUCTION_STATUS_LABELS.not_verified;
+}
+
+function formatMeasured(check) {
+  const value = check?.measured;
+  if (typeof value !== 'number') return isMissing(value) ? NOT_AVAILABLE : String(value);
+  const text = value.toLocaleString('en-US');
+  return check.id === 'textures' ? `${text} px` : text;
+}
+
+export function mapProduction(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const status = raw.status in PRODUCTION_STATUS_LABELS && raw.status !== 'info' ? raw.status : 'not_verified';
+  const strings = (value) => (Array.isArray(value) ? value.filter((item) => typeof item === 'string') : []);
+  return {
+    status,
+    statusLabel: productionStatusLabel(status),
+    profile: raw.profile ?? null,
+    profileLabel: raw.profile_label ?? null,
+    profileSource: raw.profile_source ?? null,
+    exception: typeof raw.exception === 'string' ? raw.exception : null,
+    reason: typeof raw.reason === 'string' ? raw.reason : null,
+    checks: (Array.isArray(raw.checks) ? raw.checks : []).filter((check) => check && typeof check === 'object').map((check) => {
+      const checkStatus = check.status in PRODUCTION_STATUS_LABELS && check.status !== 'not_applicable' ? check.status : 'not_verified';
+      return {
+        id: check.id ?? null,
+        label: check.label ?? check.id ?? UNKNOWN,
+        status: checkStatus,
+        statusLabel: productionStatusLabel(checkStatus),
+        measured: formatMeasured(check),
+        target: isMissing(check.target) ? NOT_AVAILABLE : String(check.target),
+        message: typeof check.message === 'string' ? check.message : '',
+        fix: typeof check.fix === 'string' ? check.fix : null,
+        enforcement: ['blocker', 'warning', 'none'].includes(check.enforcement) ? check.enforcement : null
+      };
+    }),
+    outstanding: strings(raw.outstanding),
+    notVerified: strings(raw.not_verified),
+    // Acceptance at promotion is shown next to the unchanged status; it never turns a violation into a pass.
+    warningsAccepted: raw.warnings_accepted_at_promotion === true,
+    policyVersion: Number.isInteger(raw.policy_version) ? raw.policy_version : null,
+    evaluatedAt: raw.evaluated_at ?? null,
+    source: raw.source ?? null
+  };
+}
+
 export function isMissing(value) {
   if (value === null || value === undefined) return true;
   if (typeof value === 'string') return value.trim() === '';
@@ -278,7 +337,9 @@ export function mapRevision(revision, asset = null) {
     supersedes: revision?.supersedes ?? null,
     supersededBy: revision?.superseded_by ?? null,
     openInRigCheckPath: model?.path ?? null,
-    previewImagePath: preview?.path ?? null
+    previewImagePath: preview?.path ?? null,
+    hasModel: files.some((file) => file.kind === 'model'),
+    production: mapProduction(revision?.production)
   };
 }
 

@@ -409,7 +409,7 @@ function initAssetLibrary() {
     if (canWrite() && revision.state === 'candidate') {
       const promote = el('button', { className: 'button secondary asset-write-action', text: 'Promote…', attrs: { type: 'button' } });
       promote.disabled = jobBusy;
-      promote.addEventListener('click', () => openPromoteForm(asset, revision, promotePanel, promote));
+      promote.addEventListener('click', () => startPromotion(asset, revision, promotePanel));
       actions.append(promote);
     }
 
@@ -475,7 +475,8 @@ function initAssetLibrary() {
       el('header', { className: 'revision-head' }, [
         el('span', { className: 'revision-id code', text: displayValue(revision.revisionId) }),
         el('span', { className: `badge state ${revision.isCanonical ? 'canonical' : revision.state ?? ''}`, text: stateText }),
-        review.required ? el('span', { className: 'badge review', text: 'Manual review' }) : null
+        review.required ? el('span', { className: 'badge review', text: 'Manual review' }) : null,
+        productionBadge(revision)
       ]),
       actions,
       promotePanel,
@@ -493,6 +494,7 @@ function initAssetLibrary() {
         ['Notes', revision.note, { wide: true, prose: true, fallback: NOT_AVAILABLE }]
       ]),
       detailsBlock(`Manual review${review.required ? ` (${review.reasons.length})` : ''}`, reviewContent, review.required),
+      revisionProductionBlock(revision),
       detailsBlock(`Known issues (${revision.knownIssues.length})`, issueList),
       detailsBlock('Validation', validationFields),
       detailsBlock('Model metadata', modelFields),
@@ -722,6 +724,7 @@ function initAssetLibrary() {
   }
 
   function jobOutcome(job) {
+    if (job.status === 'error' && job.operation === 'promote_dry_run' && summarizeDryRun(job).available) return blockedReview(job);
     if (job.status === 'error') {
       const detailText = job.result?.pipeline?.error;
       return [
@@ -735,7 +738,11 @@ function initAssetLibrary() {
       return [
         el('p', { className: 'asset-job-message', text: `Candidate ${displayValue(summary.revisionId)} was recorded for ${displayValue(summary.assetId)} and committed to 3d-migration as ${shortSha(job.commitSha) ?? UNKNOWN}.` }),
         summary.files.length ? fileChangeTable(['File', 'Role', 'Size'], summary.files.map((file) => [file.path, file.role, formatBytes(file.sizeBytes)])) : null,
-        summary.warnings.length ? issueList(summary.warnings) : null
+        summary.warnings.length ? issueList(summary.warnings) : null,
+        productionView(summary.production, { open: true, heading: 'Production check' }),
+        summary.production && summary.production.status !== 'not_applicable'
+          ? el('p', { className: 'dim', text: 'Budget results never block an upload. The candidate stays a candidate until you promote it.' })
+          : null
       ];
     }
     if (job.operation === 'promote_confirm') {
@@ -754,7 +761,10 @@ function initAssetLibrary() {
           el('span', { className: 'issue-severity', text: String(finding.severity).toUpperCase() }),
           el('span', { text: finding.text })
         ]))) : null,
-        summary.more ? el('p', { className: 'dim', text: `${summary.more} more findings are in the run result.` }) : null
+        summary.more ? el('p', { className: 'dim', text: `${summary.more} more findings are in the run result.` }) : null,
+        ...summary.production
+          .filter((entry) => entry.production && entry.production.status !== 'not_applicable')
+          .map((entry) => productionView(entry.production, { heading: `${entry.revisionId}${entry.canonicalState === 'canonical' ? ' (canonical)' : ''}` }))
       ];
     }
     if (job.operation === 'promote_dry_run') return dryRunReview(job);
@@ -804,15 +814,94 @@ function initAssetLibrary() {
       startAndTrack('/api/jobs/promote', buildPromoteConfirmRequest(job, accept?.checked), { refreshOnDone: true });
     });
     return [
-      el('p', { className: 'asset-job-message', text: 'Dry run finished. Nothing has changed yet. Review the promotion below.' }),
+      el('p', { className: 'asset-job-message', text: 'Dry run finished. Nothing has changed yet. Review the promotion below; it only happens when you confirm.' }),
       fields,
+      productionView(summary.production, { open: summary.production?.status !== 'pass' }),
       summary.warnings.length ? issueList(summary.warnings) : null,
       files,
       acceptRow,
       stale ? el('p', { className: 'asset-job-message error', text: 'The branch changed since this dry run. Run the dry run again before confirming.' }) : null,
       job.confirmJobId ? el('p', { className: 'dim', text: 'This dry run has already been confirmed.' }) : null,
-      el('div', { className: 'asset-job-actions' }, [confirm])
+      el('div', { className: 'asset-job-actions' }, [confirm, rerunButton(job)])
     ];
+  }
+
+  // A blocked dry run: every blocker the pipeline found, its production results and partial plan. No confirm.
+  function blockedReview(job) {
+    const summary = summarizeDryRun(job);
+    const count = summary.blockers.length;
+    return [
+      el('p', { className: 'asset-job-message error', text: `Promotion is blocked, and nothing has changed. Resolve ${count === 1 ? 'this blocker' : `these ${count} blockers`} first:` }),
+      issueList(summary.blockers, 'error'),
+      productionView(summary.production, { open: summary.production?.status !== 'pass' }),
+      summary.warnings.length ? detailsBlock(`Warnings (${summary.warnings.length})`, issueList(summary.warnings)) : null,
+      el('div', { className: 'asset-job-actions' }, [rerunButton(job)])
+    ];
+  }
+
+  function rerunButton(job) {
+    const button = el('button', { className: 'button secondary asset-write-action', text: 'Run dry run again', attrs: { type: 'button' } });
+    button.disabled = jobBusy || !canWrite();
+    button.addEventListener('click', () => {
+      const params = job.params ?? {};
+      startAndTrack('/api/jobs/promote', buildPromoteDryRunRequest({
+        baseSha: commitSha,
+        assetId: params.asset_id,
+        revisionId: params.revision_id,
+        displayName: params.display_name,
+        category: params.category,
+        destination: params.destination
+      }));
+    });
+    return button;
+  }
+
+  // ---- production compliance (evaluated only by the INVASION pipeline; shown here as recorded)
+
+  function productionBadge(revision) {
+    if (revision.production) {
+      const accepted = revision.production.warningsAccepted ? ' · warnings accepted' : '';
+      return el('span', { className: `badge production state-${revision.production.status}`, text: `Production: ${revision.production.statusLabel}${accepted}` });
+    }
+    return revision.hasModel ? el('span', { className: 'badge production state-not_verified', text: 'Production: Not evaluated' }) : null;
+  }
+
+  function revisionProductionBlock(revision) {
+    if (revision.production) return productionView(revision.production);
+    if (!revision.hasModel) return null;
+    return detailsBlock('Production compliance · Not evaluated', el('p', { className: 'dim', text: 'This revision was recorded before production checks existed. Re-validate the asset to evaluate it against its profile. A promotion dry run always evaluates it.' }));
+  }
+
+  function productionView(production, { open = false, heading = 'Production compliance' } = {}) {
+    if (!production) return null;
+    const source = production.profileSource === 'asset_assignment' ? ' · assigned to this asset'
+      : production.profileSource === 'category_default' ? ' · from category' : '';
+    const rows = production.checks.map((check) => el('li', { className: `production-row status-${check.status}` }, [
+      el('span', { className: 'production-label', text: check.label }),
+      el('span', { className: 'production-value', text: check.measured === NOT_AVAILABLE ? '—' : check.measured }),
+      el('span', { className: 'production-target', text: check.target === NOT_AVAILABLE ? '' : `target ${check.target}` }),
+      el('span', { className: `production-state state-${check.status}`, text: check.statusLabel }),
+      check.status !== 'pass' && check.message ? el('span', { className: 'production-message', text: check.message }) : null
+    ]));
+    const body = el('div', { className: 'production' }, [
+      el('p', { className: 'production-profile', text: production.profileLabel ? `Profile: ${production.profileLabel}${source}` : (production.reason ?? 'No production profile applies.') }),
+      production.exception ? el('p', { className: 'dim', text: production.exception }) : null,
+      production.warningsAccepted
+        ? el('p', { className: 'asset-job-message', text: 'Its production warnings were explicitly accepted at promotion. That does not make it production-compliant; the results below are unchanged.' })
+        : null,
+      production.profileLabel && production.reason ? el('p', { className: 'dim', text: production.reason }) : null,
+      rows.length ? el('ul', { className: 'production-checks' }, rows) : null,
+      production.outstanding.length
+        ? el('div', { className: 'production-outstanding' }, [el('strong', { text: 'Outstanding before promotion' }), issueList(production.outstanding)])
+        : null,
+      production.notVerified.length ? el('p', { className: 'dim', text: `Not verified here: ${production.notVerified.join('; ')}.` }) : null
+    ]);
+    const block = el('details', { className: 'revision-details production-details' }, [
+      el('summary', {}, [el('span', { text: heading }), el('span', { className: `badge production state-${production.status}`, text: production.statusLabel })]),
+      body
+    ]);
+    block.open = open;
+    return block;
   }
 
   async function fetchJob(jobId) {
@@ -988,11 +1077,24 @@ function initAssetLibrary() {
 
   // ---- promote (always a dry run first)
 
-  function openPromoteForm(asset, revision, panel) {
-    if (panel.childElementCount) {
-      panel.replaceChildren();
+  // Promote starts the mandatory dry run immediately with the asset's recorded name and category. The options form
+  // only opens when something is missing or the user wants a different destination/name/category.
+  function startPromotion(asset, revision, panel) {
+    if (jobBusy || !canWrite()) return;
+    if (!asset.displayName || !asset.category) {
+      showPromoteOptions(asset, revision, panel, 'This asset needs a display name and category before it can be promoted. Fill them in to start the dry run.');
       return;
     }
+    const change = el('button', { className: 'text-button', text: 'Change options', attrs: { type: 'button' } });
+    change.addEventListener('click', () => showPromoteOptions(asset, revision, panel));
+    panel.replaceChildren(el('div', { className: 'asset-form compact' }, [
+      el('p', { className: 'dim', text: `Checking ${revision.revisionId} with a promotion dry run. Review the result in the panel above; nothing changes until you confirm.` }),
+      change
+    ]));
+    startAndTrack('/api/jobs/promote', buildPromoteDryRunRequest({ baseSha: commitSha, assetId: asset.assetId, revisionId: revision.revisionId }));
+  }
+
+  function showPromoteOptions(asset, revision, panel, message = null) {
     const displayName = formField('Display name', el('input', { attrs: { type: 'text', autocomplete: 'off' } }), asset.displayName ? null : 'Required: this asset has no display name yet.');
     displayName.control.value = asset.displayName ?? '';
     const category = formField('Category', choice(vocabulary.categories, asset.category, 'Not set'), asset.category ? null : 'Required: this asset has no category yet.');
@@ -1000,7 +1102,7 @@ function initAssetLibrary() {
       'An unused directory under assets/. Left blank, the pipeline uses the placeholder path.');
     const run = el('button', { className: 'button primary asset-write-action', text: 'Run dry run', attrs: { type: 'button' } });
     run.disabled = jobBusy;
-    const cancel = el('button', { className: 'button ghost', text: 'Cancel', attrs: { type: 'button' } });
+    const cancel = el('button', { className: 'button ghost', text: 'Close', attrs: { type: 'button' } });
     cancel.addEventListener('click', () => panel.replaceChildren());
     run.addEventListener('click', () => {
       const errors = checkIngestForm({ assetId: asset.assetId, displayName: displayName.control.value }, vocabulary);
@@ -1016,7 +1118,7 @@ function initAssetLibrary() {
       }));
     });
     panel.replaceChildren(el('div', { className: 'asset-form compact' }, [
-      el('p', { className: 'dim', text: `Promote ${revision.revisionId} to canonical. This starts with a dry run; nothing changes until you review it and confirm.` }),
+      el('p', { className: message ? 'asset-job-message error' : 'dim', text: message ?? `Run the promotion dry run for ${revision.revisionId} with different options. Nothing changes until you review it and confirm.` }),
       displayName.field, category.field, destination.field,
       el('div', { className: 'asset-job-actions' }, [run, cancel])
     ]));
