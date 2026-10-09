@@ -190,6 +190,11 @@ function printCheck(result) {
     + `Size: ${formatBytes(result.sizeBytes)} (${result.sizeBytes} bytes)\n`
     + `SHA-256: ${result.sha256}\n`
     + `Triangles: ${result.triangles}\nMeshes: ${result.meshes}\nBones: ${result.bones}\nSkins: ${result.skins}\nClips: ${result.clips}\n`
+    + (result.metrics
+      ? `Materials used: ${result.metrics.materials.used} of ${result.metrics.materials.declared}\n`
+        + `Skinned mesh nodes: ${result.metrics.skinnedMeshNodes}\n`
+        + `Largest texture: ${result.metrics.maxImageDimension === null ? (result.metrics.images.length ? 'not measured' : 'none') : `${result.metrics.maxImageDimension} px`}\n`
+      : '')
     + `Validator: ${result.validation.errorCount} errors, ${result.validation.warningCount} warnings, ${result.validation.infoCount} infos, ${result.validation.hintCount} hints\n`
   );
   for (const issue of result.validation.messages) {
