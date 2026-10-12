@@ -1,20 +1,27 @@
-// RigCheck 3D — INVASION Asset Library (browse, preview and Open in RigCheck; for writers also upload candidate,
-// promote and re-validate). The authoritative source is docs/ASSET_MANIFEST.yaml on invasion-godot 3d-migration,
+// RigCheck 3D — INVASION Asset Library (browse, preview and Open in RigCheck; for writers also add files as
+// candidates, retarget/bake clips, bind gameplay animation slots, promote and re-validate). The authoritative source is docs/ASSET_MANIFEST.yaml on invasion-godot 3d-migration,
 // served by the Asset Library API. Asset bytes arrive only through short-lived signed URLs and enter the existing
 // viewer through #fileInput. Changes run only as Asset Library jobs (the INVASION pipeline on GitHub Actions).
 import { getApps, getApp, initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
-import { getStorage, ref as storageRef, uploadBytesResumable } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-storage.js";
+import { getStorage, ref as storageRef, uploadBytesResumable, getBlob } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-storage.js";
+import { getFirestore, collection, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 import {
+  COMPONENT_ORDER,
   NOT_AVAILABLE,
   STATE_ORDER,
   UNKNOWN,
+  componentLabel,
   displayValue,
   formatBytes,
   formatDate,
   groupManifest,
+  shortNote,
   stateLabel
 } from "./lib/asset-library-model.js";
+import { InspectError, inspectBuffer } from "./lib/animation-inspect.js";
+import { revisionSkeleton, statusLabel as classificationLabel } from "./lib/rig-classify.js";
+import { bindableClips, classifyAgainstAsset, extensionOf, manifestHashes, slotsFor, suggestComponent, suggestParent } from "./lib/asset-components.js";
 import { AssetApiError, apiGet, apiPost, describeApiError, resolveApiBase, shortSha } from "./lib/asset-library-api.js";
 import {
   buildIngestRequest,
@@ -28,6 +35,8 @@ import {
   operationLabel,
   pollJob,
   roleFromClaims,
+  summarizeAnimate,
+  summarizeBind,
   summarizeDryRun,
   summarizeIngest,
   summarizeInspections,
@@ -47,6 +56,7 @@ const firebaseConfig = {
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const storage = getStorage(app);
+const firestore = getFirestore(app);
 const API_BASE = resolveApiBase(window.location, window.localStorage);
 const DOWNLOAD_TIMEOUT_MS = 180000;
 const VIEWER_LOAD_TIMEOUT_MS = 90000;
@@ -107,12 +117,19 @@ function initAssetLibrary() {
   let jobBusy = false;
   let tray = null;
   let pollGeneration = 0;
-  let reusableUpload = null;
-  let uploadForm = null;
   // A saved job report shown in the detail pane (any role); survives re-renders like the upload form.
   let reportView = null;
   // The asset whose Reports list was last opened, so returning from a report keeps the list open.
   let reportsOpenFor = null;
+  // The raw manifest (for client-side classification) and the private rig profiles served with it.
+  let rawManifest = null;
+  let rigProfiles = null;
+  // Selected detail tab per asset, and the multi-file Add files flow (writers).
+  const assetTabs = new Map();
+  let addFiles = null;
+  let addFilesView = null;
+  // A source revision chosen with "Retarget…" on its card, preselected in the Animations tab form.
+  let retargetPreset = null;
 
   const assetButton = el('button', {
     className: 'button ghost asset-library-button',
@@ -134,7 +151,7 @@ function initAssetLibrary() {
           <p id="assetLibrarySource">Authoritative asset manifest</p>
         </div>
         <div class="asset-library-head-actions">
-          <button class="button secondary asset-write-action" id="assetLibraryUpload" type="button" hidden>Upload candidate</button>
+          <button class="button secondary asset-write-action" id="assetLibraryUpload" type="button" hidden>Add files</button>
           <button class="asset-icon-button" id="assetLibraryRefresh" type="button" title="Refresh from the authoritative branch" aria-label="Refresh manifest">↻</button>
           <button class="asset-icon-button" id="assetLibraryClose" type="button" aria-label="Close asset library">×</button>
         </div>
@@ -204,6 +221,8 @@ function initAssetLibrary() {
       if (forceTokenRefresh) await currentUser.getIdToken(true);
       const response = await apiGet({ base: API_BASE, path: '/api/manifest', getIdToken });
       grouped = groupManifest(response.manifest);
+      rawManifest = response.manifest;
+      rigProfiles = response.rigProfiles ?? null;
       commitSha = response.commitSha;
       vocabulary = response.vocabulary ?? null;
       role = await readRole();
@@ -218,6 +237,7 @@ function initAssetLibrary() {
       if (tray && !jobBusy) renderTray();
     } catch (error) {
       grouped = null;
+      rawManifest = null;
       vocabulary = null;
       accessState = error?.code === 'not_authorized' ? 'not_authorized' : 'error';
       logUnexpected('manifest', error);
@@ -247,7 +267,7 @@ function initAssetLibrary() {
   }
 
   function render() {
-    body.classList.toggle('showing-detail', Boolean(selectedAssetId) || Boolean(uploadForm) || Boolean(reportView));
+    body.classList.toggle('showing-detail', Boolean(selectedAssetId) || Boolean(reportView) || Boolean(addFilesView));
     uploadButton.hidden = !canWrite();
     uploadButton.disabled = jobBusy;
     footer.textContent = role === 'writer'
@@ -304,8 +324,9 @@ function initAssetLibrary() {
         ]);
         button.addEventListener('click', () => {
           selectedAssetId = asset.assetId;
-          uploadForm = null;
           reportView = null;
+          addFilesView = null;
+          addFiles = null;
           render();
           detail.scrollTop = 0;
         });
@@ -321,11 +342,11 @@ function initAssetLibrary() {
       detail.replaceChildren(reportView);
       return;
     }
-    if (uploadForm && canWrite()) {
-      detail.replaceChildren(uploadForm);
+    if (addFilesView && canWrite()) {
+      detail.replaceChildren(addFilesView);
       return;
     }
-    uploadForm = null;
+    addFilesView = null;
     const asset = findAsset(selectedAssetId);
     if (!asset) {
       detail.replaceChildren(el('div', { className: 'asset-empty' }, [
@@ -381,14 +402,28 @@ function initAssetLibrary() {
       summary
     ]);
 
-    const groups = [...STATE_ORDER, 'other']
-      .filter((state) => asset.groups[state]?.length)
-      .map((state) => el('section', { className: `revision-group state-${state}` }, [
-        el('h4', { text: `${stateLabel(state)} (${asset.groups[state].length})` }),
-        ...asset.groups[state].map((revision) => revisionCard(asset, revision))
-      ]));
+    const tabs = detailTabs(asset);
+    const tab = tabs.some((entry) => entry.id === assetTabs.get(asset.assetId)) ? assetTabs.get(asset.assetId) : 'overview';
+    let content;
+    if (tab === 'models') content = stateGroups(asset, asset.modelGroups);
+    else if (tab === 'rig') content = rigTab(asset);
+    else if (tab === 'animations') content = animationsTab(asset);
+    else if (tab === 'materials') content = materialsTab(asset);
+    else if (tab === 'history') content = historyTab(asset);
+    else if (tab === 'validation') content = validationTab(asset);
+    else content = [issues, summarySection, componentsOverview(asset), canonical ? el('section', { className: 'revision-group state-canonical' }, [
+      el('h4', { text: 'Current model (canonical)' }), revisionCard(asset, canonical)]) : null, bindingsSummary(asset)];
+    detail.replaceChildren(...[header, tabBar(asset, tabs, tab), ...content].filter(Boolean));
+  }
 
-    detail.replaceChildren(...[header, issues, summarySection, reportsBlock(asset), ...groups].filter(Boolean));
+  function stateGroups(asset, groupsByState) {
+    const groups = [...STATE_ORDER, 'other']
+      .filter((state) => groupsByState[state]?.length)
+      .map((state) => el('section', { className: `revision-group state-${state}` }, [
+        el('h4', { text: `${stateLabel(state)} (${groupsByState[state].length})` }),
+        ...groupsByState[state].map((revision) => revisionCard(asset, revision))
+      ]));
+    return groups.length ? groups : [el('p', { className: 'dim', text: 'No model revisions are recorded for this asset.' })];
   }
 
   function detailsBlock(title, content, open = false) {
@@ -403,10 +438,31 @@ function initAssetLibrary() {
     const actions = el('div', { className: 'revision-actions' });
     const preview = el('div', { className: 'revision-preview' });
 
+    const isClips = revision.component === 'animation_collection' || revision.component === 'source_clip';
     if (revision.openInRigCheckPath) {
-      const open = el('button', { className: 'button primary', text: 'Open in RigCheck', attrs: { type: 'button' } });
+      const open = el('button', { className: `button ${isClips ? 'secondary' : 'primary'}`, text: isClips ? 'Preview original' : 'Open in RigCheck',
+        attrs: { type: 'button', title: isClips ? 'Open this file on its own skeleton in RigCheck' : 'Open this model in RigCheck' } });
       open.addEventListener('click', () => openInRigCheck(asset, revision, open));
       actions.append(open);
+    }
+    if (revision.component === 'animation_collection' && revision.animation?.clips?.length) {
+      const target = previewTarget(asset, revision);
+      if (target) {
+        const show = el('button', { className: 'button primary', text: 'Preview on character', attrs: { type: 'button', title: `Play these clips on ${target.revisionId}` } });
+        show.addEventListener('click', () => previewOnCharacter(asset, revision, target, show));
+        actions.append(show);
+      }
+    }
+    if (isClips && canWrite() && revision.animation?.clips?.length) {
+      const retarget = el('button', { className: 'button secondary asset-write-action', text: 'Retarget…', attrs: { type: 'button' } });
+      retarget.disabled = jobBusy;
+      retarget.addEventListener('click', () => {
+        retargetPreset = { assetId: asset.assetId, sources: [revision.revisionId] };
+        assetTabs.set(asset.assetId, 'animations');
+        render();
+        detail.querySelector('.asset-retarget')?.scrollIntoView({ block: 'start' });
+      });
+      actions.append(retarget);
     }
     if (revision.previewImagePath) {
       const show = el('button', { className: 'button secondary', text: 'Preview image', attrs: { type: 'button' } });
@@ -485,6 +541,7 @@ function initAssetLibrary() {
     card.append(
       el('header', { className: 'revision-head' }, [
         el('span', { className: 'revision-id code', text: displayValue(revision.revisionId) }),
+        el('span', { className: `badge component component-${revision.component}`, text: revision.componentLabel }),
         el('span', { className: `badge state ${revision.isCanonical ? 'canonical' : revision.state ?? ''}`, text: stateText }),
         review.required ? el('span', { className: 'badge review', text: 'Manual review' }) : null,
         productionBadge(revision)
@@ -504,8 +561,9 @@ function initAssetLibrary() {
         ['Superseded by', revision.supersededBy, { code: true, fallback: NOT_AVAILABLE }],
         ['Notes', revision.note, { wide: true, prose: true, fallback: NOT_AVAILABLE }]
       ]),
+      animationBlock(asset, revision),
       detailsBlock(`Manual review${review.required ? ` (${review.reasons.length})` : ''}`, reviewContent, review.required),
-      revisionProductionBlock(revision),
+      revision.component === 'model' ? revisionProductionBlock(revision) : null,
       detailsBlock(`Known issues (${revision.knownIssues.length})`, issueList),
       detailsBlock('Validation', validationFields),
       detailsBlock('Model metadata', modelFields),
@@ -683,8 +741,8 @@ function initAssetLibrary() {
   }
 
   function writerAssetActions(asset) {
-    const upload = el('button', { className: 'button secondary asset-write-action', text: 'Upload candidate', attrs: { type: 'button' } });
-    upload.addEventListener('click', () => openUploadForm(asset));
+    const upload = el('button', { className: 'button secondary asset-write-action', text: 'Add files', attrs: { type: 'button', title: 'Add models, clip collections, source clips or textures to this asset as candidates' } });
+    upload.addEventListener('click', () => openAddFiles(asset));
     const validate = el('button', { className: 'button ghost asset-write-action', text: 'Re-validate', attrs: { type: 'button', title: 'Re-run the pipeline inspections for this asset (read-only)' } });
     validate.addEventListener('click', () => startAndTrack('/api/jobs/validate', { assetId: asset.assetId, recheck: true }));
     for (const button of [upload, validate]) button.disabled = jobBusy;
@@ -744,10 +802,20 @@ function initAssetLibrary() {
         typeof detailText === 'string' && detailText !== describeJobError(job) ? el('p', { className: 'dim', text: detailText }) : null
       ];
     }
+    if (job.operation === 'animate') return animateOutcome(job);
+    if (job.operation === 'bind') {
+      const summary = summarizeBind(job);
+      return [
+        el('p', { className: 'asset-job-message', text: `Animation slots for ${displayValue(summary.assetId)} were saved and committed to 3d-migration as ${shortSha(job.commitSha) ?? UNKNOWN}.` }),
+        summary.slots ? fileChangeTable(['Slot', 'Clip', 'Collection', 'Loop'], Object.entries(summary.slots).map(([slot, value]) => [slot, value.clip, value.revision_id, value.loop ? 'Loop' : 'Once'])) : null,
+        summary.warnings.length ? issueList(summary.warnings) : null,
+        summary.integrationRequired ? el('p', { className: 'dim', text: summary.integrationRequired }) : null
+      ];
+    }
     if (job.operation === 'ingest') {
       const summary = summarizeIngest(job);
       return [
-        el('p', { className: 'asset-job-message', text: `Candidate ${displayValue(summary.revisionId)} was recorded for ${displayValue(summary.assetId)} and committed to 3d-migration as ${shortSha(job.commitSha) ?? UNKNOWN}.` }),
+        el('p', { className: 'asset-job-message', text: `${componentLabel(job.params?.component ?? 'model')} candidate ${displayValue(summary.revisionId)} was recorded for ${displayValue(summary.assetId)} and committed to 3d-migration as ${shortSha(job.commitSha) ?? UNKNOWN}.` }),
         summary.files.length ? fileChangeTable(['File', 'Role', 'Size'], summary.files.map((file) => [file.path, file.role, formatBytes(file.sizeBytes)])) : null,
         summary.warnings.length ? issueList(summary.warnings) : null,
         productionView(summary.production, { open: true, heading: 'Production check' }),
@@ -870,7 +938,6 @@ function initAssetLibrary() {
       setStatus(apiErrorMessage(error), true);
       return;
     }
-    uploadForm = null;
     if (job.params?.asset_id && findAsset(job.params.asset_id)) selectedAssetId = job.params.asset_id;
     reportView = reportShell(job);
     render();
@@ -1149,115 +1216,6 @@ function initAssetLibrary() {
     });
   }
 
-  function openUploadForm(asset = null) {
-    if (!canWrite() || jobBusy) return;
-    uploadForm = buildUploadForm(asset);
-    render();
-    detail.scrollTop = 0;
-  }
-
-  function buildUploadForm(asset) {
-    const back = el('button', { className: 'text-button asset-back', text: asset ? '← Back to asset' : '← All assets', attrs: { type: 'button' } });
-    back.addEventListener('click', () => {
-      uploadForm = null;
-      selectedAssetId = asset?.assetId ?? null;
-      render();
-    });
-    const assetIds = grouped.categories.flatMap((category) => category.assets.map((entry) => entry.assetId)).filter(Boolean).sort();
-    const datalist = el('datalist', { attrs: { id: 'assetLibraryAssetIds' } }, assetIds.map((id) => el('option', { attrs: { value: id } })));
-
-    const file = formField('File', el('input', { attrs: { type: 'file', accept: vocabulary.supportedExtensions.join(',') } }),
-      `Supported: ${vocabulary.supportedExtensions.join(' ')} · up to ${formatBytes(vocabulary.maxUploadBytes)}`);
-    const assetId = formField('Asset ID', el('input', { attrs: { type: 'text', list: 'assetLibraryAssetIds', autocomplete: 'off', spellcheck: 'false', required: '' } }),
-      'An existing asset gets a new candidate revision; a new ID creates a new logical asset.');
-    assetId.control.value = asset?.assetId ?? '';
-    const known = el('span', { className: 'asset-form-hint' });
-    assetId.field.insertBefore(known, assetId.error);
-    const revisionId = formField('Revision ID (optional)', el('input', { attrs: { type: 'text', autocomplete: 'off', spellcheck: 'false' } }), 'Left blank, the pipeline derives it from the file contents.');
-    const displayName = formField('Display name (optional)', el('input', { attrs: { type: 'text', autocomplete: 'off' } }));
-    const category = formField('Category', choice(vocabulary.categories, asset?.category, 'Not set'), 'An existing asset keeps its category; it cannot change here.');
-    const fileRole = formField('File role', choice(vocabulary.roles, '', 'Automatic'), 'Automatic: source for .blend/.fbx/.psd, otherwise runtime.');
-    const note = formField('Note (optional)', el('textarea', { attrs: { rows: '3' } }));
-    const source = formField('Source / provenance (optional)', el('input', { attrs: { type: 'text', autocomplete: 'off' } }));
-    const creator = formField('Creator (optional)', el('input', { attrs: { type: 'text', autocomplete: 'off' } }));
-    const fields = { assetId, revisionId, displayName, category, role: fileRole, note, source, creator };
-
-    const describeKnown = () => {
-      const existing = findAsset(assetId.control.value.trim());
-      known.textContent = existing ? `Existing asset: ${displayValue(existing.displayName, existing.assetId)} · ${existing.categoryLabel} · ${existing.revisionCount} revision${existing.revisionCount === 1 ? '' : 's'}` : '';
-      if (existing?.category && !category.control.value) category.control.value = existing.category;
-    };
-    assetId.control.addEventListener('input', describeKnown);
-    describeKnown();
-
-    const submit = el('button', { className: 'button primary asset-write-action', text: 'Upload and ingest', attrs: { type: 'submit' } });
-    submit.disabled = jobBusy;
-    const form = el('form', { className: 'asset-form', attrs: { novalidate: '' } }, [
-      el('p', { className: 'dim', text: 'The INVASION asset pipeline ingests the file as a new candidate revision, and the job commits only the pipeline\'s own changes to 3d-migration. Nothing becomes canonical without a separate, reviewed promotion.' }),
-      file.field, datalist, assetId.field, revisionId.field, displayName.field, category.field, fileRole.field, note.field, source.field, creator.field,
-      el('div', { className: 'asset-job-actions' }, [submit])
-    ]);
-    form.addEventListener('submit', (event) => {
-      event.preventDefault();
-      const values = Object.fromEntries(Object.entries(fields).map(([name, entry]) => [name, entry.control.value]));
-      const errors = checkIngestForm(values, vocabulary);
-      const fileError = checkUploadFile(file.control.files?.[0], vocabulary);
-      file.error.textContent = fileError ?? '';
-      for (const [name, entry] of Object.entries(fields)) entry.error.textContent = errors[name] ?? '';
-      if (fileError || Object.keys(errors).length) return;
-      submitUpload(file.control.files[0], values);
-    });
-    return el('section', { className: 'asset-upload' }, [
-      el('header', { className: 'asset-detail-head' }, [back, el('h3', { text: asset ? `Upload candidate for ${displayValue(asset.displayName, asset.assetId)}` : 'Upload candidate' })]),
-      form
-    ]);
-  }
-
-  async function submitUpload(file, values) {
-    if (jobBusy || !canWrite()) return;
-    setJobBusy(true);
-    const generation = ++pollGeneration;
-    const key = `${file.name}:${file.size}:${file.lastModified}`;
-    let job = null;
-    try {
-      let jobId = reusableUpload?.key === key ? reusableUpload.jobId : null;
-      if (!jobId) {
-        tray = { title: 'Reserving the upload…' };
-        renderTray();
-        const reservation = await apiPost({
-          base: API_BASE,
-          path: '/api/uploads',
-          body: { fileName: file.name, size: file.size, ...(file.type ? { contentType: file.type } : {}) },
-          getIdToken
-        });
-        await uploadToStaging(file, reservation.stagingPath, (percent) => {
-          tray = { title: `Uploading ${file.name} · ${percent}% of ${formatBytes(file.size)}` };
-          renderTray();
-        });
-        jobId = reservation.jobId;
-        reusableUpload = { key, jobId };
-      }
-      tray = { title: 'Starting the ingest job…' };
-      renderTray();
-      ({ job } = await apiPost({ base: API_BASE, path: '/api/jobs/ingest', body: buildIngestRequest(values, { jobId, baseSha: commitSha }), getIdToken }));
-      reusableUpload = null;
-      const final = await follow(job, generation);
-      if (final?.status === 'done') {
-        uploadForm = null;
-        selectedAssetId = values.assetId.trim();
-        await loadManifest();
-      }
-    } catch (error) {
-      logUnexpected('upload', error);
-      // These leave the reservation unused, so a retry with the same file skips the upload.
-      if (!['stale_base', 'mutation_in_progress', 'rate_limited', 'invalid_request', 'network', 'upstream_error', 'vocabulary_unavailable'].includes(error?.code) || job) reusableUpload = null;
-      tray = { job, title: job ? 'Lost track of the job' : 'The upload was not ingested', message: apiErrorMessage(error), isError: true, staleBase: error?.code === 'stale_base' };
-    } finally {
-      setJobBusy(false);
-      renderTray();
-    }
-  }
-
   // ---- promote (always a dry run first)
 
   // Promote starts the mandatory dry run immediately with the asset's recorded name and category. The options form
@@ -1307,8 +1265,740 @@ function initAssetLibrary() {
     ]));
   }
 
+  // ------------------------------------------------------------------------------------------- asset detail tabs
+
+  function rawAsset(assetId) {
+    return rawManifest?.assets?.find((asset) => asset?.asset_id === assetId) ?? null;
+  }
+
+  function is3d(asset) {
+    return asset.revisions.some((revision) => revision.files.some((file) => ['glb', 'gltf', 'fbx'].includes(file.format)));
+  }
+
+  function detailTabs(asset) {
+    const threeD = is3d(asset);
+    const count = (component) => asset.components[component]?.length ?? 0;
+    const tabs = [
+      { id: 'overview', label: 'Overview' },
+      { id: 'models', label: threeD ? `Models (${count('model')})` : `Revisions (${count('model')})` },
+      threeD ? { id: 'rig', label: 'Rig' } : null,
+      threeD ? { id: 'animations', label: `Animations (${count('animation_collection') + count('source_clip')})` } : null,
+      { id: 'materials', label: 'Materials' },
+      { id: 'history', label: `History (${asset.revisionCount})` },
+      { id: 'validation', label: 'Validation' }
+    ];
+    return tabs.filter(Boolean);
+  }
+
+  function tabBar(asset, tabs, active) {
+    const bar = el('nav', { className: 'asset-tabs', attrs: { role: 'tablist', 'aria-label': 'Asset sections' } });
+    for (const tab of tabs) {
+      const button = el('button', { className: `asset-tab${tab.id === active ? ' active' : ''}`, text: tab.label,
+        attrs: { type: 'button', role: 'tab', 'aria-selected': String(tab.id === active), 'data-tab': tab.id } });
+      button.addEventListener('click', () => {
+        assetTabs.set(asset.assetId, tab.id);
+        render();
+        detail.scrollTop = 0;
+      });
+      bar.append(button);
+    }
+    return bar;
+  }
+
+  function componentsOverview(asset) {
+    const rows = COMPONENT_ORDER.filter((component) => asset.components[component]?.length).map((component) => {
+      const list = asset.components[component];
+      const canonicalId = component === 'model' ? asset.canonicalRevisionId : asset.componentCanonicals[component];
+      const candidates = list.filter((revision) => revision.state === 'candidate').length;
+      return [componentLabel(component), `${list.length} revision${list.length === 1 ? '' : 's'} · canonical ${canonicalId ?? 'none'} · ${candidates} candidate${candidates === 1 ? '' : 's'}`];
+    });
+    if (!rows.length) return null;
+    return el('section', { className: 'asset-summary' }, [
+      el('h4', { text: 'Components' }),
+      fieldList(rows.map(([label, value]) => [label, value, { wide: true }])),
+      el('p', { className: 'dim', text: 'Each component is versioned and promoted on its own. A clip collection never replaces the model, and the model canonical is what the game references.' })
+    ]);
+  }
+
+  function bindingsSummary(asset) {
+    const slots = slotsFor(rigProfiles, asset.category);
+    if (!slots.length) return null;
+    const bound = asset.bindings?.slots ?? {};
+    return el('section', { className: 'asset-summary' }, [
+      el('h4', { text: 'Gameplay animation slots' }),
+      fieldList(slots.map(({ slot, loop }) => [slot, bound[slot] ? `${bound[slot].clip} · ${bound[slot].revisionId}${bound[slot].loop === false ? ' · once' : ' · loops'}` : `Not bound (${loop ? 'looping' : 'one-shot'} slot)`])),
+      el('p', { className: 'dim', text: 'Bindings record intent only. The game still uses the model canonical\'s own clips until a bound collection is promoted and integrated in Godot.' })
+    ]);
+  }
+
+  function modelSkeletonInfo(revision) {
+    const raw = rawAsset(selectedAssetId)?.revisions?.find((entry) => entry.revision_id === revision.revisionId);
+    const resolved = raw ? revisionSkeleton(raw, rigProfiles) : null;
+    const recorded = revision.animation?.skeleton;
+    const rigId = recorded?.rig ?? resolved?.rig ?? null;
+    const rig = rigId ? rigProfiles?.rigs?.[rigId] : null;
+    return { resolved, recorded, rigId, rig };
+  }
+
+  function rigTab(asset) {
+    const parts = [];
+    for (const revision of asset.components.model ?? []) {
+      const { resolved, recorded, rigId, rig } = modelSkeletonInfo(revision);
+      const mechanical = revision.animation?.mechanical;
+      if (!resolved?.joints?.length && !mechanical) continue;
+      const naming = recorded?.naming ?? (rig ? rig.naming : null);
+      const family = recorded?.family ?? rig?.family ?? (rigProfiles?.namings?.[naming]?.family ?? null);
+      const fields = fieldList([
+        ['Revision', `${revision.revisionId}${revision.isCanonical ? ' (canonical)' : ''}`, { code: true }],
+        ['Skeleton', resolved?.joints?.length ? `${displayValue(resolved.name)} · ${resolved.joints.length} joints` : 'No skeleton'],
+        ['Rig profile', rig ? `${rig.label ?? rigId}` : naming ? `Unregistered rig with ${rigProfiles?.namings?.[naming]?.label ?? naming} naming` : 'Not recognised', { wide: true }],
+        ['Family', family],
+        ['Rest pose', rig?.rest_pose, { wide: true, fallback: NOT_AVAILABLE }],
+        ['Units / facing', [rig?.units, rig?.forward].filter(Boolean).join(' · ') || null, { wide: true, fallback: NOT_AVAILABLE }],
+        ['Source of this data', resolved?.source === 'recorded' ? 'Recorded at ingest' : resolved?.source === 'profile_reference' ? 'Matched to the registered rig reference by joint names' : resolved?.source === 'names_only' ? 'Joint names only' : NOT_AVAILABLE, { wide: true }],
+        ['Notes', rig?.notes, { wide: true, prose: true, fallback: NOT_AVAILABLE }]
+      ]);
+      const card = el('article', { className: 'revision-card' }, [fields]);
+      if (family === 'insectoid') card.append(el('p', { className: 'dim', text: 'Creature rigs are registered for identification only. Clips are shared only with an identical rig; there is no creature retargeting.' }));
+      if (mechanical) card.append(mechanicalBlock(mechanical));
+      parts.push(card);
+    }
+    if (!parts.length) parts.push(el('p', { className: 'dim', text: 'No skeleton or pivot data is recorded for this asset\'s models.' }));
+    return [el('section', { className: 'revision-group' }, [el('h4', { text: 'Rig and pivots' }), ...parts])];
+  }
+
+  function mechanicalBlock(mechanical) {
+    return el('div', { className: 'asset-mechanical' }, [
+      el('h5', { text: `Mechanical pivots${mechanical.profile ? ` (${mechanical.profile})` : ''}` }),
+      fileChangeTable(['Pivot node', 'Role', 'Parent', 'Mesh'], mechanical.pivots.map((pivot) => [pivot.node, pivot.role, pivot.parent, pivot.has_mesh ? 'Yes' : 'No'])),
+      mechanical.issues.length ? issueList(mechanical.issues.map((issue) => `${issue.code}: ${issue.message}`)) : el('p', { className: 'dim', text: 'Hierarchy and axis checks passed.' }),
+      el('p', { className: 'dim', text: mechanical.note ?? 'Describes the model only; gameplay aiming is unchanged.' })
+    ]);
+  }
+
+  function animationBlock(asset, revision) {
+    const animation = revision.animation;
+    if (!animation || (!animation.clips.length && !animation.mechanical && !animation.skeleton)) return null;
+    const parts = [];
+    if (animation.clips.length) {
+      const derivedClips = new Map((animation.derived?.clips ?? []).map((clip) => [clip.output, clip]));
+      const godotClips = new Map((animation.derived?.godot?.clips ?? []).map((clip) => [clip.name, clip]));
+      parts.push(fileChangeTable(animation.derived ? ['Clip', 'Length', 'Mode', 'Bake', 'Godot'] : ['Clip', 'Length'], animation.clips.map((clip) => {
+        const baked = derivedClips.get(clip.name);
+        const godot = godotClips.get(clip.name);
+        const row = [clip.name, clip.durationS === null ? null : `${clip.durationS.toFixed(2)} s`];
+        if (animation.derived) row.push(baked?.mode ?? null, baked ? statusWord(baked.status) : null, godot ? (godot.ok ? `OK${godot.loop ? ' · loops' : ''}` : 'Failed') : 'Not run');
+        return row;
+      })));
+    }
+    if (animation.skeleton) {
+      parts.push(fieldList([
+        ['Skeleton', `${displayValue(animation.skeleton.name)} · ${displayValue(animation.skeleton.jointCount)} joints`],
+        ['Naming', rigProfiles?.namings?.[animation.skeleton.naming]?.label ?? animation.skeleton.naming, { fallback: 'Not recognised' }],
+        ['Registered rig', rigProfiles?.rigs?.[animation.skeleton.rig]?.label ?? animation.skeleton.rig, { fallback: 'None' }]
+      ]));
+    }
+    if (animation.classification.length) {
+      parts.push(el('ul', { className: 'asset-classification' }, animation.classification.map((entry) => el('li', {}, [
+        el('span', { className: `badge classification ${entry.status}`, text: classificationLabel(entry.status) }),
+        el('span', { className: 'code', text: `→ ${entry.targetRevision}${entry.targetState === 'canonical' ? ' (canonical model)' : ''}` }),
+        el('span', { className: 'dim', text: entry.reasons.join(' ') })
+      ]))));
+    }
+    const derived = animation.derived;
+    if (derived) {
+      parts.push(fieldList([
+        ['Baked for', derived.target?.revision_id ? `${derived.target.asset_id}/${derived.target.revision_id}` : null, { code: true, wide: true }],
+        ['Sources', derived.sources.map((source) => `${source.asset_id ?? '?'}/${source.revision_id ?? '?'} (${source.format ?? '?'}, ${source.naming ?? '?'})`).join(', '), { wide: true }],
+        ['Recipe', derived.recipeSha256 ? derived.recipeSha256.slice(0, 16) : null, { code: true }],
+        ['Tool', derived.tool ? `${derived.tool.name} ${derived.tool.version} · Blender ${derived.tool.blender}` : null, { wide: true }],
+        ['Rest pose after export', derived.exportCheck ? (derived.exportCheck.rest_pose_unchanged ? 'Unchanged' : 'Changed') : null],
+        ['Godot 4.6.3 check', derived.godot ? `${derived.godot.ok ? 'Passed' : derived.godot.ok === false ? 'Failed' : 'Not run'}${derived.godot.engine ? ` · ${derived.godot.engine}` : ''}` : 'Not run', { wide: true }]
+      ]));
+      const failed = derived.clips.filter((clip) => !['pass', 'warning'].includes(clip.status));
+      if (failed.length) parts.push(el('div', {}, [el('strong', { text: 'Clips left out of this collection' }), issueList(failed.map((clip) => `${clip.output ?? clip.sourceClip ?? 'Clip'}: ${clip.error ?? statusWord(clip.status)}${clip.issues.length ? ` — ${clip.issues.map((i) => i.message).join(' ')}` : ''}`), 'error')]));
+      const metrics = derived.clips.filter((clip) => ['pass', 'warning'].includes(clip.status));
+      if (metrics.length) {
+        parts.push(detailsBlock('Bake validation per clip', fileChangeTable(['Clip', 'Knee min', 'Loop seam', 'Pose error', 'Issues'], metrics.map((clip) => {
+          const knees = clip.metrics.knee_flexion_deg ?? {};
+          const kneeMin = Math.min(...Object.values(knees).map((range) => range?.[0]).filter((v) => typeof v === 'number'));
+          return [clip.output, Number.isFinite(kneeMin) ? `${kneeMin.toFixed(1)}°` : null, typeof clip.metrics.loop_seam_deg === 'number' ? `${clip.metrics.loop_seam_deg.toFixed(1)}°` : null,
+            typeof clip.metrics.absolute_direction_error_deg === 'number' ? `${clip.metrics.absolute_direction_error_deg.toFixed(1)}°` : '—',
+            clip.issues.length ? clip.issues.map((issue) => issue.code).join(', ') : 'None'];
+        }))));
+      }
+    }
+    if (animation.mechanical) parts.push(mechanicalBlock(animation.mechanical));
+    return detailsBlock(animation.clips.length ? `Animation (${animation.clips.length} clip${animation.clips.length === 1 ? '' : 's'})` : 'Rig data', el('div', { className: 'asset-animation' }, parts), revision.component !== 'model');
+  }
+
+  function statusWord(status) {
+    return { pass: 'Pass', warning: 'Warnings', fail: 'Failed validation', error: 'Error' }[status] ?? displayValue(status);
+  }
+
+  // The model a collection previews on: the revision it was baked for, else the canonical model, else any rigged model.
+  function previewTarget(asset, revision) {
+    const models = (asset.components.model ?? []).filter((model) => model.openInRigCheckPath && /\.glb$/i.test(model.openInRigCheckPath));
+    const baked = revision.animation?.derived?.target?.revision_id;
+    return models.find((model) => model.revisionId === baked) ?? models.find((model) => model.isCanonical) ?? models[0] ?? null;
+  }
+
+  async function loadFilesIntoViewer(files) {
+    const transfer = new DataTransfer();
+    for (const file of files) transfer.items.add(file);
+    fileInput.files = transfer.files;
+    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+    const loaded = await waitForViewer(files[0].name);
+    if (loaded && sourceLabel) sourceLabel.textContent = 'INVASION ASSET';
+    return loaded;
+  }
+
+  async function previewOnCharacter(asset, revision, target, button) {
+    if (busy) return;
+    busy = true;
+    button.disabled = true;
+    try {
+      const progress = (label) => (received, total) => setStatus(total ? `Downloading ${label} · ${Math.round((received / total) * 100)}% of ${formatBytes(total)}` : `Downloading ${label} · ${formatBytes(received)}`);
+      const model = await downloadAssetFile(asset.assetId, target.revisionId, target.openInRigCheckPath, progress(`model ${target.revisionId}`));
+      const clips = await downloadAssetFile(asset.assetId, revision.revisionId, revision.openInRigCheckPath, progress(`clips ${revision.revisionId}`));
+      setStatus(`Opening ${revision.revisionId} on ${target.revisionId} in RigCheck…`);
+      if (!(await loadFilesIntoViewer([model, clips]))) throw new AssetApiError('internal', 0, 'The viewer could not open these files.');
+      setStatus(`${revision.animation.clips.length} clip(s) from ${revision.revisionId} are playing on ${target.revisionId}. Choose a clip in the viewer.`);
+      closeLibrary();
+    } catch (error) {
+      logUnexpected('preview', error);
+      setStatus(error instanceof AssetApiError ? error.message : describeApiError('internal'), true);
+    } finally {
+      busy = false;
+      button.disabled = false;
+    }
+  }
+
+  function animationsTab(asset) {
+    const collections = asset.components.animation_collection ?? [];
+    const sources = asset.components.source_clip ?? [];
+    const parts = [];
+    if (slotsFor(rigProfiles, asset.category).length) parts.push(bindingEditor(asset));
+    if (canWrite()) parts.push(retargetForm(asset));
+    for (const [label, list] of [['Animation collections', collections], ['Source clips', sources]]) {
+      if (!list.length) continue;
+      parts.push(el('section', { className: 'revision-group' }, [el('h4', { text: `${label} (${list.length})` }), ...list.map((revision) => revisionCard(asset, revision))]));
+    }
+    if (!collections.length && !sources.length) {
+      parts.push(el('div', { className: 'asset-empty' }, [
+        el('strong', { text: 'No clips yet' }),
+        el('span', { text: 'Add Mixamo FBX files as source clips or a GLB with clips as a collection, then retarget them onto this asset\'s model.' })
+      ]));
+    }
+    return parts;
+  }
+
+  function bindingEditor(asset) {
+    const slots = slotsFor(rigProfiles, asset.category);
+    const clips = bindableClips(rawAsset(asset.assetId));
+    const bound = asset.bindings?.slots ?? {};
+    const section = el('section', { className: 'asset-summary asset-bindings' }, [el('h4', { text: 'Gameplay animation slots' })]);
+    const rows = [];
+    const table = el('div', { className: 'asset-binding-rows' });
+    for (const { slot, loop, rootMotion } of slots) {
+      const select = el('select', { attrs: { 'aria-label': `Clip for ${slot}` } });
+      select.append(el('option', { text: 'Not bound', attrs: { value: '' } }));
+      for (const clip of clips) {
+        select.append(el('option', { text: `${clip.clip} — ${clip.revisionId} (${clip.state}${clip.baked ? `, baked for ${clip.targetRevision ?? '?'}` : ', not baked'})`, attrs: { value: `${clip.revisionId}\u0000${clip.clip}` } }));
+      }
+      const current = bound[slot];
+      select.value = current ? `${current.revisionId}\u0000${current.clip}` : '';
+      const loopBox = el('input', { attrs: { type: 'checkbox' } });
+      loopBox.checked = current?.loop ?? loop;
+      const root = el('select', { attrs: { 'aria-label': `Root motion for ${slot}` } }, ['in_place', 'keep'].map((value) => el('option', { text: value === 'in_place' ? 'In place' : 'Keep root motion', attrs: { value } })));
+      root.value = current?.rootMotion ?? rootMotion ?? 'in_place';
+      select.disabled = loopBox.disabled = root.disabled = !canWrite() || jobBusy;
+      rows.push({ slot, select, loopBox, root, current });
+      table.append(el('div', { className: 'asset-binding-row' }, [
+        el('span', { className: 'asset-binding-slot code', text: slot }), select,
+        el('label', { className: 'asset-accept' }, [loopBox, el('span', { text: 'Loop' })]), root
+      ]));
+    }
+    section.append(table);
+    if (!clips.length) section.append(el('p', { className: 'dim', text: 'There are no clips to bind yet. Retarget clips onto this asset\'s model first.' }));
+    if (canWrite()) {
+      const save = el('button', { className: 'button primary asset-write-action', text: 'Save slot bindings', attrs: { type: 'button' } });
+      save.disabled = jobBusy || !clips.length;
+      save.addEventListener('click', () => {
+        const slotsBody = {};
+        for (const row of rows) {
+          const [revisionId, clip] = row.select.value ? row.select.value.split('\u0000') : [null, null];
+          const before = row.current ? `${row.current.revisionId}\u0000${row.current.clip}\u0000${row.current.loop}\u0000${row.current.rootMotion}` : '';
+          const after = revisionId ? `${revisionId}\u0000${clip}\u0000${row.loopBox.checked}\u0000${row.root.value}` : '';
+          if (before === after) continue;
+          slotsBody[row.slot] = revisionId ? { revisionId, clip, loop: row.loopBox.checked, rootMotion: row.root.value } : null;
+        }
+        if (!Object.keys(slotsBody).length) {
+          setStatus('The slot bindings are unchanged.');
+          return;
+        }
+        startAndTrack('/api/jobs/bind', { baseSha: commitSha, assetId: asset.assetId, slots: slotsBody }, { refreshOnDone: true });
+      });
+      section.append(el('div', { className: 'asset-job-actions' }, [save]));
+    }
+    section.append(el('p', { className: 'dim', text: 'Saving records the bindings in the manifest (a reviewed commit to 3d-migration). It does not change Godot scenes or the game\'s current clips.' }));
+    return section;
+  }
+
+  function retargetForm(asset) {
+    const raw = rawAsset(asset.assetId);
+    const targets = (asset.components.model ?? []).filter((model) => model.files.some((file) => file.format === 'glb'));
+    const sourceRevisions = [...(asset.components.source_clip ?? []), ...(asset.components.animation_collection ?? [])].filter((revision) => revision.animation?.clips?.length);
+    const preset = retargetPreset?.assetId === asset.assetId ? retargetPreset : null;
+    const section = el('section', { className: 'asset-summary asset-retarget' }, [el('h4', { text: 'Retarget and bake' })]);
+    if (!targets.length || !sourceRevisions.length) {
+      section.append(el('p', { className: 'dim', text: !targets.length ? 'This asset has no rigged GLB model to bake onto.' : 'Add source clips (Mixamo FBX) or a clip collection first.' }));
+      return section;
+    }
+    const targetSelect = el('select');
+    for (const model of targets) targetSelect.append(el('option', { text: `${model.revisionId}${model.isCanonical ? ' (canonical)' : ''} · ${model.state}`, attrs: { value: model.revisionId } }));
+    targetSelect.value = (targets.find((model) => model.isCanonical) ?? targets[0]).revisionId;
+    const target = formField('Target model', targetSelect, 'Clips are baked onto this model\'s skeleton. The result is a new candidate collection; nothing becomes canonical.');
+    const clipRows = [];
+    const sourcesBox = el('div', { className: 'asset-retarget-sources' });
+    for (const revision of sourceRevisions) {
+      const include = el('input', { attrs: { type: 'checkbox' } });
+      include.checked = preset ? preset.sources.includes(revision.revisionId) : revision.component === 'source_clip' && revision.state !== 'superseded';
+      const classification = revision.animation.classification.find((entry) => entry.targetRevision === targetSelect.value) ?? revision.animation.classification[0];
+      const head = el('label', { className: 'asset-accept' }, [include, el('span', { text: `${revision.revisionId} · ${revision.componentLabel} · ${revision.animation.clips.length} clip${revision.animation.clips.length === 1 ? '' : 's'}` }),
+        classification ? el('span', { className: `badge classification ${classification.status}`, text: classificationLabel(classification.status) }) : null]);
+      const rows = revision.animation.clips.map((clip) => {
+        const use = el('input', { attrs: { type: 'checkbox' } });
+        use.checked = true;
+        const output = el('input', { attrs: { type: 'text', value: '', placeholder: revision.animation.format === 'fbx' && revision.animation.clips.length === 1 ? 'file name' : clip.name, spellcheck: 'false', 'aria-label': `Output name for ${clip.name}` } });
+        const mode = choice(['cyclic', 'absolute'], '', 'auto');
+        const loop = choice(['loop', 'once'], '', 'auto');
+        const row = el('div', { className: 'asset-retarget-clip' }, [use, el('span', { className: 'code', text: clip.name }), output, mode, loop]);
+        clipRows.push({ revision, clip, use, output, mode, loop, include });
+        return row;
+      });
+      sourcesBox.append(el('div', { className: 'asset-retarget-source' }, [head, ...rows]));
+    }
+    const note = formField('Note (optional)', el('input', { attrs: { type: 'text', autocomplete: 'off' } }));
+    const run = el('button', { className: 'button primary asset-write-action', text: 'Bake as candidate collection', attrs: { type: 'button' } });
+    run.disabled = jobBusy;
+    const error = el('p', { className: 'asset-form-error', attrs: { role: 'alert' } });
+    run.addEventListener('click', () => {
+      const chosen = sourceRevisions.filter((revision) => clipRows.some((row) => row.revision === revision && row.include.checked));
+      if (!chosen.length) {
+        error.textContent = 'Choose at least one source.';
+        return;
+      }
+      const overrides = [];
+      for (const row of clipRows) {
+        const index = chosen.indexOf(row.revision);
+        if (index < 0) continue;
+        const entry = { source: index, clip: row.clip.name };
+        if (!row.use.checked) entry.skip = true;
+        if (row.output.value.trim()) entry.output = row.output.value.trim();
+        if (row.mode.value) entry.mode = row.mode.value;
+        if (row.loop.value) entry.loop = row.loop.value === 'loop';
+        if (Object.keys(entry).length > 2) overrides.push(entry);
+      }
+      error.textContent = '';
+      retargetPreset = null;
+      startAndTrack('/api/jobs/animate', {
+        baseSha: commitSha, assetId: asset.assetId, targetRevisionId: targetSelect.value,
+        sources: chosen.map((revision) => ({ assetId: asset.assetId, revisionId: revision.revisionId })),
+        ...(overrides.length ? { recipe: { overrides } } : {}),
+        ...(note.control.value.trim() ? { note: note.control.value.trim() } : {})
+      }, { refreshOnDone: true });
+    });
+    section.append(target.field, el('div', { className: 'asset-form-label', text: 'Sources and clips (mode and loop default to automatic: walk/run/idle are cyclic and loop; other clips are held poses)' }),
+      sourcesBox, note.field, error, el('div', { className: 'asset-job-actions' }, [run]),
+      el('p', { className: 'dim', text: 'Runs Blender 4.3.2 offline on the job runner, validates every clip (knees, loop seams, pose, rest pose) and checks import and looping in Godot 4.6.3. Failed clips are reported and left out.' }));
+    if (!raw) section.append(el('p', { className: 'asset-job-message error', text: 'The manifest has not loaded.' }));
+    return section;
+  }
+
+  function animateOutcome(job) {
+    const summary = summarizeAnimate(job);
+    if (job.status === 'error' || !summary.available) {
+      return [
+        el('p', { className: 'asset-job-message error', text: describeJobError(job) }),
+        summary.clips.length ? animateClipTable(summary) : null,
+        el('p', { className: 'dim', text: job.pushed ? `Commit ${shortSha(job.commitSha)} was pushed.` : 'Nothing was committed to 3d-migration.' })
+      ];
+    }
+    return [
+      el('p', { className: 'asset-job-message', text: summary.duplicate
+        ? `This exact bake is already recorded as ${displayValue(summary.revisionId)}; nothing new was committed.`
+        : `Candidate collection ${displayValue(summary.revisionId)} (${summary.summary?.baked ?? '?'} clip${summary.summary?.baked === 1 ? '' : 's'}) was recorded for ${displayValue(summary.assetId)} and committed as ${shortSha(job.commitSha) ?? UNKNOWN}.` }),
+      animateClipTable(summary),
+      el('p', { className: 'dim', text: `Godot 4.6.3: ${summary.godot ? (summary.godot.ok ? 'every clip resolved on the model and played with the right loop behaviour' : `failed — ${(summary.godot.errors ?? []).join(' ') || summary.godot.reason || 'see the report'}`) : 'not run'}. Rest pose after export: ${summary.exportCheck?.rest_pose_unchanged ? 'unchanged' : 'not verified'}.` })
+    ];
+  }
+
+  function animateClipTable(summary) {
+    return fileChangeTable(['Clip', 'Mode', 'Result', 'Knee min', 'Loop seam', 'Godot'], summary.clips.map((clip) => [
+      clip.output ?? clip.sourceClip ?? 'Source', clip.mode ?? '—',
+      [statusWord(clip.status), clip.error, clip.issues.length ? clip.issues.join('; ') : null].filter(Boolean).join(' — '),
+      clip.kneeMin === null ? '—' : `${clip.kneeMin.toFixed(1)}°`, clip.loopSeam === null || clip.loopSeam === undefined ? '—' : `${Number(clip.loopSeam).toFixed(1)}°`,
+      clip.godot ? (clip.godot.ok ? `OK${clip.godot.loop ? ' · loops' : ''}` : 'Failed') : (['pass', 'warning'].includes(clip.status) ? 'Not run' : '—')
+    ]));
+  }
+
+  function materialsTab(asset) {
+    const parts = [];
+    for (const revision of [...(asset.components.model ?? []), ...(asset.components.materials ?? [])]) {
+      const textures = revision.files.filter((file) => file.role === 'textures' || ['png', 'jpg', 'jpeg', 'webp', 'ktx2'].includes(file.format));
+      if (!revision.model.materials?.length && !textures.length) continue;
+      parts.push(el('article', { className: 'revision-card' }, [
+        el('header', { className: 'revision-head' }, [el('span', { className: 'revision-id code', text: revision.revisionId }),
+          el('span', { className: `badge component component-${revision.component}`, text: revision.componentLabel }),
+          el('span', { className: `badge state ${revision.isCanonical ? 'canonical' : revision.state ?? ''}`, text: revision.isCanonical ? 'CANONICAL' : displayValue(revision.state).toUpperCase() })]),
+        fieldList([['Materials', revision.model.materials?.map((name) => name ?? UNKNOWN), { wide: true, fallback: NOT_AVAILABLE }], ['Textures in the model', revision.model.textureCount]]),
+        textures.length ? fileChangeTable(['Texture file', 'Format', 'Size'], textures.map((file) => [file.path, file.format, formatBytes(file.sizeBytes)])) : null
+      ]));
+    }
+    return parts.length ? [el('section', { className: 'revision-group' }, [el('h4', { text: 'Materials and textures' }), ...parts])]
+      : [el('p', { className: 'dim', text: 'No material or texture data is recorded for this asset.' })];
+  }
+
+  function historyTab(asset) {
+    const revisions = [...asset.revisions].sort((a, b) => (new Date(b.latestDate ?? 0).getTime() || 0) - (new Date(a.latestDate ?? 0).getTime() || 0));
+    return [el('section', { className: 'revision-group' }, [
+      el('h4', { text: 'History (newest first)' }),
+      fileChangeTable(['Revision', 'Component', 'State', 'Recorded', 'Promoted', 'Links', 'Note'], revisions.map((revision) => [
+        revision.revisionId, revision.componentLabel, revision.isCanonical ? 'canonical (current)' : revision.state, formatDate(revision.ingestedAt ?? revision.recordedAt), formatDate(revision.promotedAt, '—'),
+        [revision.supersedes && `supersedes ${revision.supersedes}`, revision.supersededBy && `superseded by ${revision.supersededBy}`].filter(Boolean).join('; ') || '—',
+        shortNote(revision.note, 90) ?? '—'
+      ]))
+    ])];
+  }
+
+  function validationTab(asset) {
+    const parts = [];
+    const canonical = asset.canonical;
+    if (canonical?.production) parts.push(productionView(canonical.production, { open: true, heading: `Production compliance (canonical model ${canonical.revisionId})` }));
+    const review = asset.revisions.filter((revision) => revision.manualReview.required);
+    parts.push(el('section', { className: 'asset-summary' }, [
+      el('h4', { text: `Manual review (${review.length})` }),
+      review.length ? el('ul', { className: 'issue-list' }, review.flatMap((revision) => revision.manualReview.reasons.map((reason) => el('li', { className: `severity-${reason.severity}` }, [
+        el('span', { className: 'issue-severity', text: reason.severity.toUpperCase() }), el('span', { className: 'code', text: `${revision.revisionId} · ${displayValue(reason.code)}` }), el('span', { text: displayValue(reason.message, '') })
+      ])))) : el('p', { className: 'dim', text: 'No manual review required by recorded data.' })
+    ]));
+    parts.push(reportsBlock(asset));
+    return parts;
+  }
+
+  // ------------------------------------------------------------------------------------- add files (writers)
+
+  function openAddFiles(asset = null) {
+    if (!canWrite() || jobBusy) return;
+    addFiles = { presetAssetId: asset?.assetId ?? null, items: [], cloud: null, running: false };
+    reportView = null;
+    refreshAddFiles();
+    detail.scrollTop = 0;
+  }
+
+  function refreshAddFiles() {
+    if (!addFiles) {
+      addFilesView = null;
+      return render();
+    }
+    addFilesView = buildAddFilesView();
+    return render();
+  }
+
+  function suggestedId(name) {
+    const stem = String(name).replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^[^a-z]+/, '').replace(/_+$/, '').slice(0, 64);
+    return stem || 'new_asset';
+  }
+
+  function applySuggestions(item, { keepParent = false } = {}) {
+    const description = item.description;
+    let parent = null;
+    if (keepParent) {
+      const asset = rawAsset(item.assetId);
+      parent = asset ? { assetId: asset.asset_id, classification: description ? classifyAgainstAsset(description, asset, rigProfiles) : null } : null;
+    } else {
+      parent = description ? suggestParent(description, rawManifest, rigProfiles, addFiles.presetAssetId) : (addFiles.presetAssetId ? { assetId: addFiles.presetAssetId, classification: null } : null);
+      item.assetId = parent?.assetId ?? addFiles.presetAssetId ?? suggestedId(item.name);
+      item.parentReason = parent?.reason ?? (rawAsset(item.assetId) ? 'Selected asset' : 'New asset');
+    }
+    item.classification = parent?.classification ?? null;
+    if (!item.componentTouched) {
+      const suggestion = suggestComponent(item.name, description, rawAsset(item.assetId), item.classification);
+      item.component = suggestion.component;
+      item.componentReason = suggestion.reason;
+    }
+  }
+
+  async function inspectItem(item, buffer) {
+    try {
+      item.description = ['glb', 'fbx'].includes(extensionOf(item.name)) ? inspectBuffer(item.name, buffer) : { format: extensionOf(item.name), skeletons: [], clips: [], nodes: null };
+      item.inspectError = null;
+    } catch (error) {
+      item.description = null;
+      item.inspectError = error instanceof InspectError ? error.message : 'The file could not be read.';
+    }
+    applySuggestions(item);
+    item.inspecting = false;
+  }
+
+  async function addLocalFiles(fileList) {
+    for (const file of [...fileList]) {
+      const item = { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, name: file.name, size: file.size, source: 'device', file,
+        inspecting: true, status: 'pending', displayName: '', category: '' };
+      addFiles.items.push(item);
+      refreshAddFiles();
+      const problem = checkUploadFile(file, vocabulary);
+      if (problem) {
+        Object.assign(item, { inspecting: false, status: 'blocked', message: problem });
+        continue;
+      }
+      await inspectItem(item, await file.arrayBuffer());
+      refreshAddFiles();
+    }
+  }
+
+  async function loadCloudLibrary() {
+    addFiles.cloud = { loading: true, models: [], error: null };
+    refreshAddFiles();
+    try {
+      const snapshot = await getDocs(query(collection(firestore, 'users', currentUser.uid, 'models'), orderBy('updatedAt', 'desc')));
+      const hashes = manifestHashes(rawManifest);
+      addFiles.cloud = { loading: false, error: null, models: snapshot.docs.map((entry) => {
+        const data = { id: entry.id, ...entry.data() };
+        return { ...data, inManifest: data.sha256 ? hashes.get(String(data.sha256).toLowerCase()) ?? null : null };
+      }) };
+    } catch (error) {
+      console.error('RigCheck Asset Library cloud listing error:', error);
+      addFiles.cloud = { loading: false, models: [], error: 'Your Cloud Library could not be listed.' };
+    }
+    refreshAddFiles();
+  }
+
+  async function addCloudModel(model) {
+    const name = model.originalName ?? String(model.storagePath ?? '').split('/').pop();
+    const item = { id: `cloud-${model.id}`, name: String(model.storagePath ?? name).split('/').pop(), size: model.sizeBytes ?? null, source: 'cloud', cloudModel: model,
+      inspecting: true, status: 'pending', displayName: '', category: '' };
+    if (addFiles.items.some((existing) => existing.id === item.id)) return;
+    addFiles.items.push(item);
+    refreshAddFiles();
+    try {
+      const blob = await getBlob(storageRef(storage, model.storagePath));
+      await inspectItem(item, await blob.arrayBuffer());
+    } catch (error) {
+      console.error('RigCheck Asset Library cloud read error:', error);
+      Object.assign(item, { inspecting: false, status: 'blocked', message: 'This Cloud Library file could not be read.' });
+    }
+    refreshAddFiles();
+  }
+
+  function itemSummary(item) {
+    const d = item.description;
+    if (item.inspectError) return item.inspectError;
+    if (!d) return item.inspecting ? 'Reading…' : '';
+    const skeleton = d.skeletons?.[0];
+    const parts = [String(d.format ?? extensionOf(item.name)).toUpperCase()];
+    if (skeleton) parts.push(`${skeleton.jointCount ?? skeleton.joints?.length} joints`);
+    if (d.clips?.length) parts.push(`${d.clips.length} clip${d.clips.length === 1 ? '' : 's'}`);
+    if (d.mesh?.meshNodes !== undefined) parts.push(d.mesh.meshNodes ? `${d.mesh.meshNodes} mesh${d.mesh.meshNodes === 1 ? '' : 'es'}` : 'no mesh');
+    const pivots = (d.nodes ?? []).filter((node) => node.role);
+    if (pivots.length) parts.push(`pivots: ${pivots.map((node) => node.role).join(', ')}`);
+    return parts.join(' · ');
+  }
+
+  function addFileRow(item) {
+    const row = el('article', { className: `revision-card asset-add-item status-${item.status}` });
+    const remove = el('button', { className: 'asset-icon-button', text: '×', attrs: { type: 'button', 'aria-label': `Remove ${item.name}` } });
+    remove.disabled = addFiles.running;
+    remove.addEventListener('click', () => {
+      addFiles.items = addFiles.items.filter((entry) => entry !== item);
+      refreshAddFiles();
+    });
+    row.append(el('header', { className: 'revision-head' }, [
+      el('span', { className: 'revision-id code', text: item.name }),
+      el('span', { className: 'chip', text: `${item.source === 'cloud' ? 'Cloud Library' : 'This device'} · ${formatBytes(item.size)}` }),
+      item.status !== 'pending' ? el('span', { className: `badge production state-${item.status === 'done' ? 'pass' : item.status === 'failed' || item.status === 'blocked' ? 'fail' : 'not_verified'}`, text: item.status.toUpperCase() }) : null,
+      remove
+    ]));
+    row.append(el('p', { className: 'dim', text: itemSummary(item) }));
+    if (item.message) row.append(el('p', { className: `asset-job-message${['failed', 'blocked'].includes(item.status) ? ' error' : ''}`, text: item.message }));
+    if (item.inspecting || item.status === 'blocked') return row;
+    const clips = item.description?.clips ?? [];
+    if (clips.length) {
+      row.append(detailsBlock(`Detected clips (${clips.length})`, fileChangeTable(['Clip', 'Length'], clips.map((clip) => [clip.name, clip.durationS === null || clip.durationS === undefined ? null : `${Number(clip.durationS).toFixed(2)} s`])), clips.length <= 12));
+    }
+    const assetIds = grouped.categories.flatMap((category) => category.assets.map((asset) => asset.assetId)).sort();
+    const parentInput = el('input', { attrs: { type: 'text', list: 'assetLibraryAssetIds', autocomplete: 'off', spellcheck: 'false', 'aria-label': `Asset for ${item.name}` } });
+    parentInput.value = item.assetId ?? '';
+    parentInput.disabled = addFiles.running || item.status === 'done';
+    parentInput.addEventListener('change', () => {
+      item.assetId = parentInput.value.trim();
+      item.parentReason = rawAsset(item.assetId) ? 'Chosen' : 'New asset';
+      applySuggestions(item, { keepParent: true });
+      refreshAddFiles();
+    });
+    const existing = rawAsset(item.assetId);
+    const component = choice(vocabulary.components ?? ['model'], item.component, 'model');
+    component.value = item.component;
+    component.disabled = parentInput.disabled;
+    component.addEventListener('change', () => {
+      item.component = component.value;
+      item.componentTouched = true;
+      item.componentReason = 'Chosen';
+      refreshAddFiles();
+    });
+    const fields = [
+      formField('Asset', parentInput, existing ? `Existing asset: ${existing.display_name ?? existing.asset_id} · ${item.parentReason ?? ''}` : 'A new logical asset will be created with this ID.'),
+      formField('Add as', component, item.componentReason)
+    ];
+    if (!existing) {
+      const name = el('input', { attrs: { type: 'text', autocomplete: 'off' } });
+      name.value = item.displayName;
+      name.addEventListener('input', () => { item.displayName = name.value; });
+      const category = choice(vocabulary.categories, item.category, 'Not set');
+      category.addEventListener('change', () => { item.category = category.value; });
+      name.disabled = category.disabled = parentInput.disabled;
+      fields.push(formField('Display name (new asset)', name), formField('Category (new asset)', category));
+    }
+    row.append(el('div', { className: 'asset-add-fields' }, fields.map((entry) => entry.field)));
+    if (item.classification) {
+      row.append(el('p', { className: 'asset-classification-line' }, [
+        el('span', { className: `badge classification ${item.classification.status}`, text: classificationLabel(item.classification.status) }),
+        el('span', { className: 'dim', text: ` against ${item.classification.targetRevision}: ${item.classification.reasons.join(' ')}` })
+      ]));
+    } else if (item.description?.skeletons?.length && existing) {
+      row.append(el('p', { className: 'dim', text: 'This asset has no model skeleton to compare with.' }));
+    }
+    if (item.revisionId) row.append(el('p', { className: 'asset-job-message', text: `Recorded as ${item.component} candidate ${item.revisionId}.` }));
+    return row;
+  }
+
+  function buildAddFilesView() {
+    const back = el('button', { className: 'text-button asset-back', text: addFiles.presetAssetId ? '← Back to asset' : '← All assets', attrs: { type: 'button' } });
+    back.disabled = addFiles.running;
+    back.addEventListener('click', () => {
+      selectedAssetId = addFiles.presetAssetId ?? selectedAssetId;
+      addFiles = null;
+      addFilesView = null;
+      render();
+    });
+    const picker = el('input', { attrs: { type: 'file', multiple: '', accept: vocabulary.supportedExtensions.join(',') } });
+    picker.disabled = addFiles.running;
+    picker.addEventListener('change', () => {
+      if (picker.files?.length) addLocalFiles(picker.files);
+    });
+    const assetIds = grouped.categories.flatMap((category) => category.assets.map((asset) => asset.assetId)).sort();
+    const datalist = el('datalist', { attrs: { id: 'assetLibraryAssetIds' } }, assetIds.map((id) => el('option', { attrs: { value: id } })));
+    const cloudButton = el('button', { className: 'button ghost', text: addFiles.cloud ? 'Refresh Cloud Library' : 'Show unassigned Cloud Library files', attrs: { type: 'button' } });
+    cloudButton.disabled = addFiles.running || addFiles.cloud?.loading;
+    cloudButton.addEventListener('click', loadCloudLibrary);
+    const cloud = el('div', { className: 'asset-cloud-files' });
+    if (addFiles.cloud?.loading) cloud.append(el('p', { className: 'dim', text: 'Listing your RigCheck Cloud Library…' }));
+    else if (addFiles.cloud?.error) cloud.append(el('p', { className: 'asset-job-message error', text: addFiles.cloud.error }));
+    else if (addFiles.cloud) {
+      const unassigned = addFiles.cloud.models.filter((model) => !model.inManifest);
+      const assigned = addFiles.cloud.models.filter((model) => model.inManifest);
+      cloud.append(el('p', { className: 'dim', text: `${unassigned.length} unassigned · ${assigned.length} already in the manifest (matched by content hash). Files without a recorded hash are listed as unassigned until the pipeline checks them.` }));
+      for (const model of unassigned) {
+        const add = el('button', { className: 'button secondary', text: 'Add', attrs: { type: 'button' } });
+        add.disabled = addFiles.running || addFiles.items.some((item) => item.id === `cloud-${model.id}`);
+        add.addEventListener('click', () => addCloudModel(model));
+        cloud.append(el('div', { className: 'asset-report-row' }, [
+          el('span', { className: 'asset-report-name', text: model.name ?? model.originalName ?? model.id }),
+          el('span', { className: 'dim', text: `${formatBytes(model.sizeBytes)}${typeof model.clips === 'number' ? ` · ${model.clips} clips` : ''}${typeof model.bones === 'number' ? ` · ${model.bones} bones` : ''}` }),
+          add
+        ]));
+      }
+      if (assigned.length) {
+        cloud.append(detailsBlock(`Already in the manifest (${assigned.length})`, el('ul', { className: 'issue-list' }, assigned.map((model) => el('li', {}, [
+          el('span', { text: model.name ?? model.id }), el('span', { className: 'code dim', text: `${model.inManifest.assetId}/${model.inManifest.revisionId}` })
+        ])))));
+      }
+    }
+    const note = formField('Note (optional, all files)', el('textarea', { attrs: { rows: '2' } }));
+    const source = formField('Source / provenance (optional)', el('input', { attrs: { type: 'text', autocomplete: 'off', placeholder: 'e.g. Mixamo, Tripo -> Blender' } }));
+    const creator = formField('Creator (optional)', el('input', { attrs: { type: 'text', autocomplete: 'off' } }));
+    for (const [entry, key] of [[note, 'note'], [source, 'source'], [creator, 'creator']]) {
+      entry.control.value = addFiles[key] ?? '';
+      entry.control.disabled = addFiles.running;
+      entry.control.addEventListener('input', () => { addFiles[key] = entry.control.value; });
+    }
+    const ready = addFiles.items.filter((item) => item.status === 'pending' && !item.inspecting);
+    const submit = el('button', { className: 'button primary asset-write-action', text: ready.length ? `Add ${ready.length} file${ready.length === 1 ? '' : 's'} as candidates` : 'Add files as candidates', attrs: { type: 'button' } });
+    submit.disabled = addFiles.running || jobBusy || !ready.length || addFiles.items.some((item) => item.inspecting);
+    submit.addEventListener('click', submitAddFiles);
+    return el('section', { className: 'asset-upload asset-add-files' }, [
+      el('header', { className: 'asset-detail-head' }, [back, el('h3', { text: addFiles.presetAssetId ? `Add files to ${displayValue(rawAsset(addFiles.presetAssetId)?.display_name, addFiles.presetAssetId)}` : 'Add files' })]),
+      el('p', { className: 'dim', text: 'Each file is read here first: clips, skeleton and pivots are detected and a parent asset and component are suggested. Check them, then add. Every file becomes a candidate through the INVASION pipeline; nothing becomes canonical, and the private manifest stays the only record.' }),
+      formField('Files from this device', picker, `Supported: ${vocabulary.supportedExtensions.join(' ')} · up to ${formatBytes(vocabulary.maxUploadBytes)} each`).field,
+      datalist,
+      el('div', { className: 'asset-cloud' }, [el('div', { className: 'asset-job-actions' }, [cloudButton]), cloud]),
+      ...addFiles.items.map(addFileRow),
+      addFiles.items.length ? el('div', { className: 'asset-add-common' }, [note.field, source.field, creator.field]) : null,
+      el('div', { className: 'asset-job-actions' }, [submit])
+    ]);
+  }
+
+  async function submitAddFiles() {
+    if (!addFiles || addFiles.running || jobBusy || !canWrite()) return;
+    const items = addFiles.items.filter((item) => item.status === 'pending' && !item.inspecting);
+    for (const item of items) {
+      const values = { assetId: item.assetId ?? '', displayName: rawAsset(item.assetId) ? '' : item.displayName, category: rawAsset(item.assetId) ? '' : item.category,
+        note: addFiles.note ?? '', source: addFiles.source ?? '', creator: addFiles.creator ?? '' };
+      const errors = checkIngestForm(values, vocabulary);
+      if (Object.keys(errors).length) {
+        Object.assign(item, { status: 'failed', message: Object.values(errors).join(' ') });
+      }
+    }
+    addFiles.running = true;
+    setJobBusy(true);
+    refreshAddFiles();
+    for (const item of items) {
+      if (item.status !== 'pending') continue;
+      const generation = ++pollGeneration;
+      try {
+        item.status = 'uploading';
+        item.message = item.source === 'cloud' ? 'Copying from your Cloud Library…' : 'Uploading…';
+        refreshAddFiles();
+        let reservation;
+        if (item.source === 'cloud') {
+          reservation = await apiPost({ base: API_BASE, path: '/api/uploads/library', body: { modelId: item.cloudModel.id }, getIdToken });
+        } else {
+          reservation = await apiPost({ base: API_BASE, path: '/api/uploads', body: { fileName: item.file.name, size: item.file.size, ...(item.file.type ? { contentType: item.file.type } : {}) }, getIdToken });
+          await uploadToStaging(item.file, reservation.stagingPath, (percent) => {
+            item.message = `Uploading · ${percent}%`;
+            refreshAddFiles();
+          });
+        }
+        item.status = 'ingesting';
+        item.message = 'The pipeline is checking and recording the file…';
+        refreshAddFiles();
+        const values = { assetId: item.assetId, component: item.component, note: addFiles.note ?? '', source: addFiles.source ?? '', creator: addFiles.creator ?? '',
+          ...(rawAsset(item.assetId) ? {} : { displayName: item.displayName, category: item.category }) };
+        const { job } = await apiPost({ base: API_BASE, path: '/api/jobs/ingest', body: buildIngestRequest(values, { jobId: reservation.jobId, baseSha: commitSha }), getIdToken });
+        const final = await follow(job, generation);
+        if (final?.status === 'done') {
+          Object.assign(item, { status: 'done', revisionId: summarizeIngest(final).revisionId, message: null });
+          await loadManifest();
+        } else {
+          Object.assign(item, { status: 'failed', message: final ? describeJobError(final) : 'The job did not finish.' });
+        }
+      } catch (error) {
+        logUnexpected('add files', error);
+        Object.assign(item, { status: 'failed', message: apiErrorMessage(error) });
+        if (error?.code === 'stale_base') await loadManifest();
+      }
+      refreshAddFiles();
+    }
+    addFiles.running = false;
+    setJobBusy(false);
+    const done = items.filter((item) => item.status === 'done').length;
+    setStatus(`${done} of ${items.length} file${items.length === 1 ? '' : 's'} added as candidates.`, done < items.length);
+    refreshAddFiles();
+  }
+
   assetButton.addEventListener('click', openLibrary);
-  uploadButton.addEventListener('click', () => openUploadForm(null));
+  uploadButton.addEventListener('click', () => openAddFiles(null));
   closeButton.addEventListener('click', closeLibrary);
   refreshButton.addEventListener('click', () => loadManifest());
   searchInput.addEventListener('input', renderList);
@@ -1330,9 +2020,11 @@ function initAssetLibrary() {
       accessState = 'idle';
       role = null;
       vocabulary = null;
-      uploadForm = null;
       reportView = null;
-      reusableUpload = null;
+      addFiles = null;
+      addFilesView = null;
+      rawManifest = null;
+      rigProfiles = null;
       pollGeneration += 1;
       jobBusy = false;
       clearTray();

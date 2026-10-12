@@ -23,12 +23,14 @@ extends that viewer through the DOM rather than by importing it.
 | `patch-v02.js` | Static-pose behaviour + upload-overlay fix |
 | `firebase-auth.js` | Google sign-in, exposes auth state to the cloud library |
 | `cloud-library.js` (module) | Upload / list / open / delete against Firebase |
-| `asset-library.js` (module) | INVASION Asset Library overlay: browse and open revisions through `#fileInput`; writers can upload candidates, promote and re-validate |
+| `asset-library.js` (module) | INVASION Asset Library overlay: browse and open revisions through `#fileInput`; writers can add files as candidates, retarget clips, bind slots, promote and re-validate |
 | `update-manager.js` | Service-worker update handoff for iOS Home Screen apps |
 | `refresh.html` | Standalone one-time cache-recovery page, opened directly |
-| `vendor/three/` | Pinned three.js, incl. `GLTFLoader` and `DRACOLoader` |
+| `vendor/three/` | Pinned three.js, incl. `GLTFLoader`, `DRACOLoader` and `FBXLoader` |
 
 `DRACOLoader` is vendored and precached, so Draco-compressed GLBs load fine.
+`FBXLoader` is loaded only when an `.fbx` is opened. Selecting a model together with clip files (GLB or FBX)
+plays every file's clips on the model, matched by bone name; a skeleton-only clip file is framed by its bones.
 That matters on cellular — geometry usually dominates these files, and Draco
 typically cuts a 20 MB rig to single digits.
 
@@ -154,10 +156,17 @@ GitHub. It calls the `assetLibraryApi` Cloud Function (`functions/`), which:
 Writers can also change the manifest, but only through INVASION's own asset pipeline, run as an
 **Asset Library job** (the `asset-library-job.yml` workflow on `invasion-godot` `main`):
 
-- **Upload candidate**: `POST /api/uploads` reserves a job and a path in
-  `asset-library-staging/{uid}/{jobId}/` (Storage rules: writer only, own folder, supported type,
-  ≤200 MB, deleted after 2 days); the browser uploads there; `POST /api/jobs/ingest` dispatches the
-  runner with a 30-minute signed URL plus the size and MD5 Cloud Storage recorded.
+- **Add files**: pick several files from this device or from the unassigned files of your own RigCheck Cloud Library
+  (files whose hash is not already in the manifest). Each file is read in the browser first (GLB or binary FBX:
+  skeleton, clips, pivots) and gets a suggested asset and **component**: `model`, `rig`, `animation_collection`,
+  `source_clip`, `materials` or `mechanical`. Clips are classified against the asset's model skeleton (`compatible`,
+  `requires_retarget`, `incompatible`, `unknown`) with the pipeline's rig profiles. You confirm or change every
+  suggestion; nothing is uploaded before that. Each file then becomes its own candidate:
+  `POST /api/uploads` reserves a job and a path in `asset-library-staging/{uid}/{jobId}/` (Storage rules: writer
+  only, own folder, supported type, ≤200 MB, deleted after 2 days) and the browser uploads there, or
+  `POST /api/uploads/library` copies the object server-side from the caller's own `users/{uid}/models/` folder.
+  `POST /api/jobs/ingest` then dispatches the runner with a 30-minute signed URL, the size and MD5 Cloud Storage
+  recorded, and the component. The pipeline re-inspects and re-classifies every file.
 - **Promote**: clicking **Promote…** immediately starts the mandatory dry run
   (`POST /api/jobs/promote` with `dryRun: true`) with the asset's recorded name and category. **Change
   options** reruns it with a different destination, name or category, and **Run dry run again** repeats it at
@@ -165,6 +174,15 @@ Writers can also change the manifest, but only through INVASION's own asset pipe
   and manifest changes. **Confirm promotion** is never automatic. The confirm names only that dry run and
   inherits all of its parameters and base commit; it must come from the same user, and must accept warnings
   explicitly whenever the dry run reported any. A blocked dry run offers no confirm.
+- **Retarget and bake**: in an asset's **Animations** tab, **Retarget…** on source clips (FBX or GLB) opens a form:
+  target model revision, clips, mode (auto, cyclic or absolute), root motion and frame rate. `POST /api/jobs/animate`
+  runs the pipeline's offline Blender bake on the runner. The result is a new `animation_collection` candidate
+  (animation-only GLB with bake provenance), with a per-clip table (knee flexion, loop seam, aim and floor checks,
+  Godot import and loop check). Re-running an identical recipe changes nothing.
+- **Preview on character**: plays an animation collection's clips on the target model in the viewer; the viewer
+  merges clips into the model's skeleton by bone name.
+- **Slot bindings**: writers map the gameplay slots defined in the private rig profiles to baked clips and save
+  them with `POST /api/jobs/bind`. Bindings record intent in the manifest; they never promote files.
 - **Re-validate**: `POST /api/jobs/validate` (read-only). When it finishes, **Open full report** shows the complete
   validation report inside RigCheck. That covers every re-inspected file with RigCheck's triangles, meshes,
   materials, skinned meshes, bones, textures, clips and glTF-validator messages, plus production-budget results per
@@ -184,13 +202,18 @@ promotion. Over-budget models are still accepted as candidates. Visual quality, 
 Godot/gameplay integration are always listed as **not verified**: no check here covers them.
 
 Every request is checked against the runner's input contract before dispatch. Mutations (ingest,
-promote confirm) also require the reviewed base commit to equal the live branch head, take a
-Firestore lock (`409 mutation_in_progress` while another runs; it expires after 20 minutes), and
-count against a per-user limit of 20 jobs and 20 uploads per hour (`429`). The runner re-checks the
+promote confirm, animate, bind) also require the reviewed base commit to equal the live branch head, take a
+Firestore lock (`409 mutation_in_progress` while another runs; it expires after 50 minutes, which covers
+a bake), and count against a per-user limit of 20 jobs and 20 uploads per hour (`429`). The runner re-checks the
 base commit before running and before its non-force push.
 
+Asset details are split into tabs: Overview, Models, Rig, Animations, Materials, History and Validation.
+
 Pure mapping and client helpers live in `dist/lib/asset-library-model.js`,
-`dist/lib/asset-library-api.js` and `dist/lib/asset-library-jobs.js`. Backend tests:
+`dist/lib/asset-library-api.js` and `dist/lib/asset-library-jobs.js`; file inspection, rig classification and
+component suggestions in `dist/lib/animation-inspect.js`, `dist/lib/rig-classify.js` and
+`dist/lib/asset-components.js`. The rig profiles themselves are private: `/api/manifest` returns them from the same
+commit as the manifest, and nothing INVASION-specific is in this repository. Backend tests:
 `cd functions && npm test` (unit, with GitHub, Actions, Storage and Firestore faked) and
 `npm run test:emulator` (Storage and Firestore emulators: rules, transactions; needs Java 21).
 Deployment steps, each changing shared infrastructure, are in

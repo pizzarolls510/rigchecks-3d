@@ -71,7 +71,7 @@ export function checkIngestForm(form, vocabulary) {
 
 export function buildIngestRequest(form, { jobId, baseSha }) {
   const body = { jobId, baseSha, assetId: clean(form.assetId) };
-  for (const field of ['revisionId', 'category', 'role', 'displayName', 'source', 'creator']) {
+  for (const field of ['revisionId', 'category', 'role', 'displayName', 'source', 'creator', 'component']) {
     if (clean(form[field])) body[field] = clean(form[field]);
   }
   const note = (form.note ?? '').replace(/\r\n?/g, '\n').trim();
@@ -99,7 +99,9 @@ const OPERATION_LABELS = {
   ingest: 'Upload candidate',
   promote_dry_run: 'Promotion dry run',
   promote_confirm: 'Promotion',
-  validate: 'Re-validation'
+  validate: 'Re-validation',
+  animate: 'Retarget and bake',
+  bind: 'Animation slot binding'
 };
 
 export function operationLabel(operation) {
@@ -282,4 +284,53 @@ export function summarizeInspections(job) {
       } : null
     };
   });
+}
+
+
+// A bake (animate) job: the collection it recorded, and per clip its mode, validation and Godot playback outcome.
+export function summarizeAnimate(job) {
+  const pipeline = job?.result?.pipeline ?? null;
+  const result = pipeline?.result ?? null;
+  const bake = result?.bake ?? null;
+  const godotClips = new Map(asArray(bake?.godot?.clips).map((clip) => [clip?.name, clip]));
+  return {
+    available: Boolean(bake),
+    assetId: result?.asset_id ?? job?.params?.asset_id ?? null,
+    revisionId: result?.revision_id ?? job?.result?.duplicate_of ?? null,
+    duplicate: job?.result?.no_changes === true || result?.duplicate === true,
+    derivedId: bake?.derived_id ?? null,
+    summary: bake?.summary ?? null,
+    godot: bake?.godot ?? null,
+    exportCheck: bake?.export_check ?? null,
+    sources: asArray(bake?.sources),
+    clips: asArray(bake?.clips).map((clip) => {
+      const knees = clip?.metrics?.knee_flexion_deg ?? null;
+      const kneeMin = knees ? Math.min(...Object.values(knees).map((range) => range?.[0]).filter((v) => typeof v === 'number')) : null;
+      return {
+        output: clip?.output ?? null,
+        sourceClip: clip?.source_clip ?? null,
+        mode: clip?.mode ?? null,
+        status: clip?.status ?? null,
+        loop: clip?.loop ?? null,
+        error: clip?.error ?? null,
+        kneeMin: Number.isFinite(kneeMin) ? kneeMin : null,
+        loopSeam: clip?.metrics?.loop_seam_deg ?? null,
+        poseError: clip?.metrics?.absolute_direction_error_deg ?? null,
+        issues: asArray(clip?.issues).map(issueText),
+        godot: godotClips.get(clip?.output) ?? null
+      };
+    }),
+    error: pipeline?.ok === false ? (pipeline?.error ?? null) : null
+  };
+}
+
+export function summarizeBind(job) {
+  const result = job?.result?.pipeline?.result ?? null;
+  return {
+    available: Boolean(result),
+    assetId: result?.asset_id ?? job?.params?.asset_id ?? null,
+    slots: result?.slots ?? null,
+    warnings: asArray(result?.warnings).map(issueText),
+    integrationRequired: typeof result?.integration_required === 'string' ? result.integration_required : null
+  };
 }

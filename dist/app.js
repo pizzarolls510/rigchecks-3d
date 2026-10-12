@@ -320,13 +320,16 @@ function updateTimeDisplay(current, duration) {
   elements.timecode.textContent = `${formatTime(current)} / ${formatTime(duration)}`;
 }
 
+// The first GLB/glTF is the model. Further GLB/FBX files contribute their clips to it (tracks bind by bone name, so an
+// animation-only collection plays on the character it was baked for). A lone FBX opens on its own skeleton.
 async function handleFiles(fileList, restored = false) {
   const files = [...fileList];
-  const primary = files.find((file) => /\.(glb|gltf)$/i.test(file.name));
+  const primary = files.find((file) => /\.(glb|gltf)$/i.test(file.name)) ?? files.find((file) => /\.fbx$/i.test(file.name));
   if (!primary) {
-    showToast("Choose a GLB or glTF file.", true);
+    showToast("Choose a GLB, glTF or FBX file.", true);
     return;
   }
+  const clipFiles = files.filter((file) => file !== primary && /\.(glb|fbx)$/i.test(file.name));
 
   elements.sourceLabel.textContent = restored ? "RESTORING MODEL" : "LOADING MODEL";
   elements.modelLabel.textContent = primary.name;
@@ -349,19 +352,38 @@ async function handleFiles(fileList, restored = false) {
   dracoLoader.setDecoderPath(new URL("./vendor/three/addons/libs/draco/gltf/", window.location.href).href);
   loader.setDRACOLoader(dracoLoader);
   loader.setMeshoptDecoder(MeshoptDecoder);
-  const primaryUrl = objectUrls.get(primary.name);
+  let fbxLoader = null;
+  const load = async (file) => {
+    if (/\.fbx$/i.test(file.name)) {
+      fbxLoader ??= new (await import("three/addons/loaders/FBXLoader.js")).FBXLoader(manager);
+      const group = await fbxLoader.loadAsync(objectUrls.get(file.name));
+      return { scene: group, animations: group.animations ?? [] };
+    }
+    return loader.loadAsync(objectUrls.get(file.name));
+  };
   try {
-    const gltf = await loader.loadAsync(primaryUrl);
-    setAsset(gltf.scene, gltf.animations, {
+    const gltf = await load(primary);
+    const clips = [...gltf.animations];
+    const names = new Set(clips.map((clip) => clip.name));
+    for (const file of clipFiles) {
+      for (const clip of (await load(file)).animations) {
+        let name = clip.name || "Clip";
+        if (names.has(name)) name = `${name} (${file.name})`;
+        names.add(name);
+        clip.name = name;
+        clips.push(clip);
+      }
+    }
+    setAsset(gltf.scene, clips, {
       name: primary.name,
       source: restored ? "SAVED ON THIS DEVICE" : "LOCAL FILE",
-      size: formatBytes(primary.size)
+      size: formatBytes(files.filter((file) => file === primary || clipFiles.includes(file)).reduce((total, file) => total + file.size, 0))
     });
     window.dispatchEvent(new CustomEvent("rigcheck:model-loaded", {
-      detail: { file: primary, restored }
+      detail: { file: primary, restored, clipFiles }
     }));
-    showToast(`${gltf.animations.length} animation clip${gltf.animations.length === 1 ? "" : "s"} loaded.`);
-    if (!restored && elements.rememberToggle.checked && /\.glb$/i.test(primary.name)) await saveLatestModel(primary);
+    showToast(`${clips.length} animation clip${clips.length === 1 ? "" : "s"} loaded${clipFiles.length ? ` from ${clipFiles.length + 1} files` : ""}.`);
+    if (!restored && !clipFiles.length && elements.rememberToggle.checked && /\.glb$/i.test(primary.name)) await saveLatestModel(primary);
     else if (!restored && elements.rememberToggle.checked && !/\.glb$/i.test(primary.name)) showToast("Use GLB if you want this device to remember the model.");
   } catch (error) {
     console.error(error);
@@ -397,7 +419,13 @@ function updateStats(root, clips, size) {
 function fitModel(view = "iso") {
   if (!state.root) return;
   state.bounds.setFromObject(state.root);
-  if (state.bounds.isEmpty()) return;
+  if (state.bounds.isEmpty()) {
+    // A skeleton-only file (e.g. a Mixamo clip downloaded without skin): frame its bones instead.
+    const point = new THREE.Vector3();
+    state.root.updateWorldMatrix(true, true);
+    state.root.traverse((object) => { if (object.isBone) state.bounds.expandByPoint(object.getWorldPosition(point)); });
+    if (state.bounds.isEmpty()) return;
+  }
   state.bounds.getBoundingSphere(state.sphere);
   const center = state.sphere.center;
   const radius = Math.max(state.sphere.radius, 0.25);

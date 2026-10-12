@@ -4,9 +4,12 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { ApiError, UpstreamError } from './errors.js';
 import { TERMINAL_STATUSES, consumeRate, lockIsHeld } from './job-store.js';
+import { slotPolicy } from './profiles-source.js';
 import {
   BASE_SHA,
   JOB_ID,
+  MAX_JSON,
+  MAX_SOURCES,
   MAX_UPLOAD_BYTES,
   buildDispatchInputs,
   checkDestination,
@@ -20,6 +23,50 @@ const UID = /^[A-Za-z0-9_-]{1,128}$/;
 const LIST_ASSET_ID = /^[a-z][a-z0-9_]{0,63}$/;
 const CONTENT_TYPE = /^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,63}\/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,63}$/;
 const MAX_ERROR_MESSAGE = 2000;
+const LIBRARY_MODEL_ID = /^[A-Za-z0-9_-]{1,128}$/;
+// Recipe keys mirror tools/animation/bake.py; the runner and the bake re-validate everything.
+const RECIPE_KEYS = ['overrides', 'options', 'thresholds'];
+const OVERRIDE_KEYS = ['source', 'clip', 'output', 'mode', 'root_motion', 'loop', 'frame_start', 'frame_end', 'skip'];
+const OPTION_KEYS = ['fps', 'legs', 'leg_from_rest', 'bone_offsets'];
+const CLIP_OUTPUT = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/;
+
+function componentOf(revision) {
+  return revision?.component || 'model';
+}
+
+function findRevision(manifest, assetId, revisionId) {
+  const asset = manifest.assets.find((candidate) => candidate?.asset_id === assetId);
+  return { asset: asset ?? null, revision: asset?.revisions?.find((candidate) => candidate?.revision_id === revisionId) ?? null };
+}
+
+function hasFile(revision, extensions) {
+  return (revision?.files ?? []).some((file) => typeof file?.path === 'string' && extensions.some((ext) => file.path.toLowerCase().endsWith(ext)));
+}
+
+function checkRecipe(recipe, sourceCount) {
+  if (recipe === undefined || recipe === null) return undefined;
+  if (typeof recipe !== 'object' || Array.isArray(recipe)) throw invalid('recipe must be an object.');
+  const unknown = Object.keys(recipe).filter((key) => !RECIPE_KEYS.includes(key));
+  if (unknown.length) throw invalid(`Unexpected recipe fields: ${unknown.join(', ')}.`);
+  const overrides = recipe.overrides ?? [];
+  if (!Array.isArray(overrides) || overrides.length > 64) throw invalid('recipe.overrides must be a list of at most 64 clip settings.');
+  for (const entry of overrides) {
+    if (!entry || typeof entry !== 'object' || Object.keys(entry).some((key) => !OVERRIDE_KEYS.includes(key))) throw invalid('Each override needs only source, clip and clip settings.');
+    if (!Number.isInteger(entry.source) || entry.source < 0 || entry.source >= sourceCount) throw invalid('An override names a source that is not in this job.');
+    if (typeof entry.clip !== 'string' || !entry.clip || entry.clip.length > 128) throw invalid('Each override needs a clip name.');
+    if (entry.output !== undefined && (typeof entry.output !== 'string' || !CLIP_OUTPUT.test(entry.output))) throw invalid(`Output clip name ${JSON.stringify(entry.output)} is not allowed.`);
+    if (entry.mode !== undefined && !['auto', 'cyclic', 'absolute'].includes(entry.mode)) throw invalid('mode must be auto, cyclic or absolute.');
+    if (entry.root_motion !== undefined && !['in_place', 'keep'].includes(entry.root_motion)) throw invalid('root_motion must be in_place or keep.');
+    for (const flag of ['loop', 'skip']) if (entry[flag] !== undefined && typeof entry[flag] !== 'boolean') throw invalid(`${flag} must be true or false.`);
+  }
+  const options = recipe.options ?? {};
+  if (typeof options !== 'object' || Array.isArray(options) || Object.keys(options).some((key) => !OPTION_KEYS.includes(key))) {
+    throw invalid(`recipe.options accepts only ${OPTION_KEYS.join(', ')}.`);
+  }
+  const text = JSON.stringify(recipe);
+  if (text.length > MAX_JSON.recipe) throw invalid(`The recipe is too large (at most ${MAX_JSON.recipe} characters).`);
+  return text;
+}
 
 function only(body, allowed) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw invalid('A JSON object body is required.');
@@ -121,7 +168,7 @@ export function publicJob(job) {
   };
 }
 
-export function createJobService({ db, github, store, source, vocabulary, config, now, makeJobId, logger }) {
+export function createJobService({ db, github, store, source, vocabulary, profiles, config, now, makeJobId, logger }) {
   const jobPath = (jobId) => `${config.jobsCollection}/${jobId}`;
   const ratePath = (uid) => `${config.rateCollection}/${uid}`;
   const lockPath = config.lockDoc;
@@ -236,7 +283,7 @@ export function createJobService({ db, github, store, source, vocabulary, config
 
   async function startIngest(user, body) {
     checkUser(user);
-    only(body, ['jobId', 'baseSha', 'assetId', 'category', 'displayName', 'revisionId', 'role', 'note', 'source', 'creator']);
+    only(body, ['jobId', 'baseSha', 'assetId', 'category', 'displayName', 'revisionId', 'role', 'note', 'source', 'creator', 'component']);
     const jobId = requiredId(body.jobId, JOB_ID, 'jobId');
     const baseSha = requiredId(body.baseSha, BASE_SHA, 'baseSha');
     const reserved = await db.get(jobPath(jobId));
@@ -255,6 +302,7 @@ export function createJobService({ db, github, store, source, vocabulary, config
       category: optionalChoice(body.category, vocab.categories, 'category'),
       display_name: checkText('display_name', body.displayName),
       role: optionalChoice(body.role, vocab.roles, 'role'),
+      component: optionalChoice(body.component, vocab.components, 'component'),
       note: checkText('note', body.note),
       source: checkText('source', body.source),
       creator: checkText('creator', body.creator)
@@ -296,6 +344,135 @@ export function createJobService({ db, github, store, source, vocabulary, config
     }
     // The signed URL goes only into the dispatch; it is never stored or returned.
     return dispatch(job, buildDispatchInputs(jobId, 'ingest', { base_sha: baseSha, ...dispatchParams, staged_url: stagedUrl }));
+  }
+
+  // Copies a file from the caller's own RigCheck Cloud Library into staging (no re-upload from the device) and returns
+  // an ordinary upload reservation; the ingest job then verifies its size and MD5 like any upload.
+  async function reserveFromLibrary(user, body) {
+    checkUser(user);
+    const { modelId } = only(body, ['modelId']);
+    if (typeof modelId !== 'string' || !LIBRARY_MODEL_ID.test(modelId)) throw invalid('A valid Cloud Library model ID is required.');
+    const model = await db.get(`users/${user.uid}/models/${modelId}`);
+    if (!model) throw new ApiError(404, 'library_file_not_found', 'That file is not in your RigCheck Cloud Library.');
+    const prefix = `users/${user.uid}/models/${modelId}/`;
+    const path = model.storagePath;
+    if (typeof path !== 'string' || !path.startsWith(prefix) || path.slice(prefix.length).includes('/') || path.includes('..')) {
+      throw new ApiError(403, 'library_file_not_owned', 'That Cloud Library entry does not point at your own file.');
+    }
+    const fileName = path.slice(prefix.length);
+    const vocab = await vocabulary.at(await source.currentSha());
+    checkFileName(fileName, vocab.supportedExtensions);
+    const stat = await store.stat(path);
+    if (!stat) throw new ApiError(404, 'library_file_not_found', 'The Cloud Library file is missing from storage.');
+    if (!Number.isSafeInteger(stat.size) || stat.size < 1 || stat.size > MAX_UPLOAD_BYTES) {
+      throw invalid(`The file must be between 1 and ${MAX_UPLOAD_BYTES} bytes.`, { maxBytes: MAX_UPLOAD_BYTES });
+    }
+    const jobId = makeJobId();
+    const stagingPath = `${config.stagingPrefix}${user.uid}/${jobId}/${fileName}`;
+    const expiresAt = now() + config.uploadReservationTtlMs;
+    const job = newJob(user, {
+      jobId,
+      operation: 'ingest',
+      status: 'awaiting_upload',
+      mutation: true,
+      upload: { fileName, size: stat.size, contentType: stat.contentType || 'application/octet-stream', stagingPath, expiresAt, libraryModelId: modelId }
+    });
+    await db.runTransaction(async (tx) => {
+      const rate = await tx.get(ratePath(user.uid));
+      tx.set(ratePath(user.uid), consumeRate(rate, 'upload', rateOptions('upload')));
+      tx.set(jobPath(jobId), job);
+    });
+    await store.copy(path, stagingPath);
+    return { jobId, stagingPath, fileName, size: stat.size, sha256: model.sha256 ?? null, maxBytes: MAX_UPLOAD_BYTES, expiresAt: new Date(expiresAt).toISOString(), copiedFromLibrary: true };
+  }
+
+  // Offline bake of manifest source clips onto a manifest model revision; the result becomes a candidate collection.
+  async function startAnimate(user, body) {
+    checkUser(user);
+    only(body, ['baseSha', 'assetId', 'targetRevisionId', 'sources', 'recipe', 'note']);
+    const baseSha = requiredId(body.baseSha, BASE_SHA, 'baseSha');
+    const vocab = await requireCurrentBase(baseSha);
+    const { manifest } = await source.current();
+    const assetId = requiredId(body.assetId, vocab.assetId, 'asset ID');
+    const targetRevisionId = requiredId(body.targetRevisionId, vocab.revisionId, 'target revision ID');
+    const target = findRevision(manifest, assetId, targetRevisionId);
+    if (!target.revision) throw new ApiError(404, 'not_found', 'That target revision is not in the manifest.');
+    if (componentOf(target.revision) !== 'model' || !hasFile(target.revision, ['.glb'])) {
+      throw invalid('The bake target must be a model revision with a GLB.');
+    }
+    if (!Array.isArray(body.sources) || body.sources.length < 1 || body.sources.length > MAX_SOURCES) {
+      throw invalid(`sources must list 1-${MAX_SOURCES} source revisions.`);
+    }
+    const refs = [];
+    for (const entry of body.sources) {
+      if (!entry || typeof entry !== 'object' || Object.keys(entry).some((key) => !['assetId', 'revisionId'].includes(key))) throw invalid('Each source needs assetId and revisionId.');
+      const ref = `${requiredId(entry.assetId, vocab.assetId, 'source asset ID')}/${requiredId(entry.revisionId, vocab.revisionId, 'source revision ID')}`;
+      const found = findRevision(manifest, entry.assetId, entry.revisionId);
+      if (!found.revision) throw new ApiError(404, 'not_found', `Source ${ref} is not in the manifest.`);
+      if (!hasFile(found.revision, ['.glb', '.fbx'])) throw invalid(`Source ${ref} has no GLB or FBX file.`);
+      if (refs.includes(ref)) throw invalid(`Source ${ref} is listed twice.`);
+      refs.push(ref);
+    }
+    const recipe = checkRecipe(body.recipe, refs.length);
+    const params = Object.fromEntries(Object.entries({
+      asset_id: assetId, revision_id: targetRevisionId, sources: refs.join(','), recipe, note: checkText('note', body.note)
+    }).filter(([, value]) => value !== undefined));
+    return startMutation(user, 'animate', baseSha, params);
+  }
+
+  // Gameplay slot -> clip bindings (manifest only; Godot is never edited by a binding).
+  async function startBind(user, body) {
+    checkUser(user);
+    only(body, ['baseSha', 'assetId', 'slots', 'note']);
+    const baseSha = requiredId(body.baseSha, BASE_SHA, 'baseSha');
+    const vocab = await requireCurrentBase(baseSha);
+    const { sha, manifest } = await source.current();
+    const assetId = requiredId(body.assetId, vocab.assetId, 'asset ID');
+    const asset = manifest.assets.find((candidate) => candidate?.asset_id === assetId);
+    if (!asset) throw new ApiError(404, 'not_found', 'That asset is not in the manifest.');
+    const policy = slotPolicy(await profiles.at(sha), asset.category);
+    if (!policy) throw invalid('No gameplay animation slots are defined for this asset\'s category.');
+    const slots = body.slots;
+    if (!slots || typeof slots !== 'object' || Array.isArray(slots) || !Object.keys(slots).length) throw invalid('slots must map at least one slot.');
+    const bindings = {};
+    for (const [slot, value] of Object.entries(slots)) {
+      if (!Object.hasOwn(policy, slot)) throw invalid(`Unknown slot ${slot}; this asset has ${Object.keys(policy).join(', ')}.`);
+      if (value === null) {
+        bindings[slot] = null;
+        continue;
+      }
+      if (!value || typeof value !== 'object' || Object.keys(value).some((key) => !['revisionId', 'clip', 'loop', 'rootMotion'].includes(key))) {
+        throw invalid(`Slot ${slot} needs revisionId and clip (optional loop, rootMotion).`);
+      }
+      const revision = asset.revisions?.find((candidate) => candidate?.revision_id === value.revisionId);
+      if (!revision || componentOf(revision) !== 'animation_collection') throw invalid(`Slot ${slot}: ${value.revisionId} is not an animation collection of this asset.`);
+      const clips = (revision.animation?.clips ?? []).map((clip) => clip?.name);
+      if (!clips.includes(value.clip)) throw invalid(`Slot ${slot}: ${value.clip} is not a clip of ${value.revisionId}.`);
+      if (value.loop !== undefined && typeof value.loop !== 'boolean') throw invalid('loop must be true or false.');
+      if (value.rootMotion !== undefined && !['in_place', 'keep'].includes(value.rootMotion)) throw invalid('rootMotion must be in_place or keep.');
+      bindings[slot] = { revision_id: value.revisionId, clip: value.clip, ...(value.loop !== undefined ? { loop: value.loop } : {}),
+        ...(value.rootMotion ? { root_motion: value.rootMotion } : {}) };
+    }
+    const text = JSON.stringify(bindings);
+    if (text.length > MAX_JSON.bindings) throw invalid('The bindings are too large.');
+    const params = Object.fromEntries(Object.entries({ asset_id: assetId, bindings: text, note: checkText('note', body.note) })
+      .filter(([, value]) => value !== undefined));
+    return startMutation(user, 'bind', baseSha, params);
+  }
+
+  // Shared path for dispatching a mutation that has no upload: lock, rate limit, job record, dispatch.
+  async function startMutation(user, operation, baseSha, params) {
+    const jobId = makeJobId();
+    const job = await db.runTransaction(async (tx) => {
+      const { lock, holder } = await readLock(tx);
+      const rate = await tx.get(ratePath(user.uid));
+      takeLock(tx, lock, holder, jobId, user, operation);
+      tx.set(ratePath(user.uid), consumeRate(rate, 'dispatch', rateOptions('dispatch')));
+      const next = newJob(user, { jobId, operation, status: 'queued', mutation: true, baseSha, params, dispatchRequestedAt: now() });
+      tx.set(jobPath(jobId), next);
+      return next;
+    });
+    return dispatch(job, buildDispatchInputs(jobId, operation, { base_sha: baseSha, ...params }));
   }
 
   async function startPromoteDryRun(user, body) {
@@ -502,7 +679,10 @@ export function createJobService({ db, github, store, source, vocabulary, config
 
   return {
     reserveUpload,
+    reserveFromLibrary,
     startIngest,
+    startAnimate,
+    startBind,
     startPromote(user, body) {
       checkUser(user);
       if (body?.dryRun === true) return startPromoteDryRun(user, body);

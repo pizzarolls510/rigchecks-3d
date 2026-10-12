@@ -62,7 +62,9 @@ export function parsePipelineVocabulary(source) {
     revisionId: compiledPattern(source, 'REVISION_ID'),
     categories: stringSet(source, 'CATEGORIES'),
     roles: stringSet(source, 'ROLES'),
-    supportedExtensions: stringSet(source, 'SUPPORTED')
+    supportedExtensions: stringSet(source, 'SUPPORTED'),
+    // Components arrived with the animation pipeline; older commits have none, so every revision is a model.
+    components: /^COMPONENTS\s*=/m.test(source) ? stringSet(source, 'COMPONENTS') : new Set(['model'])
   };
   if ([...vocabulary.supportedExtensions].some((extension) => !/^\.[a-z0-9]{1,10}$/.test(extension))) {
     fail('SUPPORTED contains an unexpected extension');
@@ -77,7 +79,8 @@ export function publicVocabulary(vocabulary) {
     revisionIdPattern: vocabulary.revisionId.source,
     categories: [...vocabulary.categories].sort(),
     roles: [...vocabulary.roles].sort(),
-    supportedExtensions: [...vocabulary.supportedExtensions].sort()
+    supportedExtensions: [...vocabulary.supportedExtensions].sort(),
+    components: [...vocabulary.components].sort()
   };
 }
 

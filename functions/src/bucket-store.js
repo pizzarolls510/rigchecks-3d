@@ -31,6 +31,11 @@ export function createBucketStore(bucket) {
       }
     },
 
+    // Server-side copy inside the bucket (a Cloud Library file into staging). Never overwrites.
+    async copy(sourceName, destinationName) {
+      await bucket.file(sourceName).copy(bucket.file(destinationName), { preconditionOpts: { ifGenerationMatch: 0 } });
+    },
+
     async delete(name) {
       await bucket.file(name).delete({ ignoreNotFound: true });
     },

@@ -1,4 +1,4 @@
-const CACHE = "rigcheck-v0.4.11";
+const CACHE = "rigcheck-v0.5.0";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -17,6 +17,9 @@ const APP_SHELL = [
   "./lib/asset-library-model.js",
   "./lib/asset-library-api.js",
   "./lib/asset-library-jobs.js",
+  "./lib/animation-inspect.js",
+  "./lib/rig-classify.js",
+  "./lib/asset-components.js",
   "./manifest.webmanifest",
   "./icons/icon.svg",
   "./icons/icon-192.png",
@@ -26,6 +29,10 @@ const APP_SHELL = [
   "./vendor/three/addons/controls/OrbitControls.js",
   "./vendor/three/addons/loaders/GLTFLoader.js",
   "./vendor/three/addons/loaders/DRACOLoader.js",
+  "./vendor/three/addons/loaders/FBXLoader.js",
+  "./vendor/three/addons/curves/NURBSCurve.js",
+  "./vendor/three/addons/curves/NURBSUtils.js",
+  "./vendor/three/addons/libs/fflate.module.js",
   "./vendor/three/addons/utils/BufferGeometryUtils.js",
   "./vendor/three/addons/libs/meshopt_decoder.module.js",
   "./vendor/three/addons/libs/draco/gltf/draco_decoder.js",

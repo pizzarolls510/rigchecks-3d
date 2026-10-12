@@ -44,8 +44,12 @@ test('the pipeline vocabulary is read from common.py literals', () => {
     revisionIdPattern: '^[a-z0-9][a-z0-9_-]{0,95}$',
     categories: ['audio', 'effects', 'enemies', 'environments', 'operators', 'other', 'structures', 'ui', 'weapons'],
     roles: ['reference', 'runtime', 'source', 'textures'],
-    supportedExtensions: [...STAGING_EXTENSIONS].sort()
+    supportedExtensions: [...STAGING_EXTENSIONS].sort(),
+    components: ['animation_collection', 'materials', 'mechanical', 'model', 'rig', 'source_clip']
   });
+  // Commits from before components existed: every revision is a model.
+  const older = parsePipelineVocabulary(PIPELINE_COMMON.replace(/^COMPONENTS = .*$/m, ''));
+  assert.deepEqual([...older.components], ['model']);
   assert.ok(vocabulary.assetId.test('sample_asset'));
   assert.ok(!vocabulary.assetId.test('Sample'));
   assert.ok(vocabulary.revisionId.test('r_0123-abc'));

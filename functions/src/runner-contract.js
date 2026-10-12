@@ -6,24 +6,31 @@
 import { ApiError } from './errors.js';
 
 // selftest exists in the runner but is a maintenance operation, not part of the API.
-export const OPERATIONS = Object.freeze(['validate', 'ingest', 'promote_dry_run', 'promote_confirm']);
-export const MUTATIONS = Object.freeze(['ingest', 'promote_confirm']);
+export const OPERATIONS = Object.freeze(['validate', 'ingest', 'promote_dry_run', 'promote_confirm', 'animate', 'bind']);
+export const MUTATIONS = Object.freeze(['ingest', 'promote_confirm', 'animate', 'bind']);
 
 // Inputs each operation accepts (job_id and operation are always sent). A runner input counts as "provided"
 // whenever it is non-empty, so false booleans and absent values are omitted rather than sent as "false" or "".
 export const ALLOWED = Object.freeze({
   validate: ['asset_id', 'revision_id', 'recheck', 'strict'],
   ingest: ['base_sha', 'asset_id', 'revision_id', 'category', 'display_name', 'role', 'note', 'source', 'creator',
-    'staged_url', 'expected_size', 'expected_md5', 'file_name'],
+    'staged_url', 'expected_size', 'expected_md5', 'file_name', 'component'],
   promote_dry_run: ['base_sha', 'asset_id', 'revision_id', 'category', 'display_name', 'destination'],
-  promote_confirm: ['base_sha', 'asset_id', 'revision_id', 'category', 'display_name', 'destination', 'accept_warnings']
+  promote_confirm: ['base_sha', 'asset_id', 'revision_id', 'category', 'display_name', 'destination', 'accept_warnings'],
+  animate: ['base_sha', 'asset_id', 'revision_id', 'sources', 'recipe', 'note'],
+  bind: ['base_sha', 'asset_id', 'bindings', 'note']
 });
 export const REQUIRED = Object.freeze({
   validate: [],
   ingest: ['base_sha', 'asset_id', 'staged_url', 'expected_size', 'expected_md5', 'file_name'],
   promote_dry_run: ['base_sha', 'asset_id', 'revision_id'],
-  promote_confirm: ['base_sha', 'asset_id', 'revision_id']
+  promote_confirm: ['base_sha', 'asset_id', 'revision_id'],
+  animate: ['base_sha', 'asset_id', 'revision_id', 'sources'],
+  bind: ['base_sha', 'asset_id', 'bindings']
 });
+// animate/bind carry references to manifest revisions and small JSON objects (keys fixed in the runner).
+export const MAX_SOURCES = 16;
+export const MAX_JSON = Object.freeze({ recipe: 8000, bindings: 4000 });
 const BOOLEAN_INPUTS = new Set(['accept_warnings', 'recheck', 'strict']);
 
 export const JOB_ID = /^[A-Za-z0-9_-]{8,64}$/;

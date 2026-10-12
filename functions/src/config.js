@@ -32,6 +32,8 @@ export const WORKFLOW_FILE = 'asset-library-job.yml';
 export const WORKFLOW_REF = 'main';
 export const RESULT_ARTIFACT = 'asset-job-result';
 export const VOCABULARY_PATH = 'tools/asset_pipeline/common.py';
+// Private rig profiles (namings, reference rest poses, gameplay slots), read at the same commit as the manifest.
+export const RIG_PROFILES_PATH = 'docs/ASSET_RIG_PROFILES.json';
 
 // Staged uploads: asset-library-staging/{uid}/{jobId}/{fileName}, removed by a 2-day bucket lifecycle rule.
 export const STAGING_PREFIX = 'asset-library-staging/';
@@ -48,7 +50,8 @@ export const STAGING_EXTENSIONS = Object.freeze([
 export const JOBS_COLLECTION = 'assetLibraryJobs';
 export const LOCK_DOC = 'assetLibraryLocks/mutation';
 export const RATE_COLLECTION = 'assetLibraryRate';
-export const MUTATION_LOCK_TTL_MS = 20 * 60 * 1000;
+// Covers the job workflow's 45-minute timeout (an animate job installs Blender and Godot, then bakes).
+export const MUTATION_LOCK_TTL_MS = 50 * 60 * 1000;
 export const RATE_WINDOW_MS = 60 * 60 * 1000;
 export const RATE_LIMITS = Object.freeze({ dispatch: 20, upload: 20 });
 
@@ -75,6 +78,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   workflowRef: WORKFLOW_REF,
   resultArtifact: RESULT_ARTIFACT,
   vocabularyPath: VOCABULARY_PATH,
+  rigProfilesPath: RIG_PROFILES_PATH,
   stagingPrefix: STAGING_PREFIX,
   uploadReservationTtlMs: UPLOAD_RESERVATION_TTL_MS,
   stagedUrlTtlMs: STAGED_URL_TTL_MS,

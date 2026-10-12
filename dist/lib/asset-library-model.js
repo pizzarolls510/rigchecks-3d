@@ -8,6 +8,20 @@ export const NOT_AVAILABLE = 'Not available';
 // Mirrors the pipeline's controlled vocabularies (tools/asset_pipeline/common.py) for display order only.
 export const CATEGORY_ORDER = ['operators', 'enemies', 'structures', 'environments', 'weapons', 'ui', 'effects', 'audio', 'other'];
 export const STATE_ORDER = ['canonical', 'candidate', 'superseded'];
+// Independently versioned parts of an asset (tools/asset_pipeline/common.py COMPONENTS). Absent means model.
+export const COMPONENT_ORDER = ['model', 'rig', 'animation_collection', 'source_clip', 'materials', 'mechanical'];
+const COMPONENT_LABELS = {
+  model: 'Model',
+  rig: 'Rig',
+  animation_collection: 'Animation collection',
+  source_clip: 'Source clip',
+  materials: 'Materials',
+  mechanical: 'Mechanical'
+};
+
+export function componentLabel(component) {
+  return COMPONENT_LABELS[component] ?? displayValue(component);
+}
 
 const CATEGORY_LABELS = {
   operators: 'Operators',
@@ -28,7 +42,8 @@ const STATE_LABELS = {
   other: 'Unrecognized state'
 };
 
-const MODEL_FORMATS = new Set(['glb', 'gltf']);
+// FBX opens in the viewer too (source clips are previewed on their own skeleton).
+const MODEL_FORMATS = new Set(['glb', 'gltf', 'fbx']);
 const IMAGE_FORMATS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif']);
 const PREVIEW_ROLE_ORDER = ['runtime', 'source', 'reference', 'textures'];
 // glTF-Validator numeric severities as stored in rig.issues.
@@ -304,15 +319,89 @@ function mapRigCheck(rig) {
   };
 }
 
+function mapClassification(entry) {
+  return {
+    targetRevision: entry?.target_revision ?? null,
+    targetState: entry?.target_state ?? null,
+    status: entry?.status ?? 'unknown',
+    sourceNaming: entry?.source_naming ?? null,
+    targetNaming: entry?.target_naming ?? null,
+    mappedBones: entry?.mapped_bones ?? null,
+    droppedTracks: entry?.dropped_tracks ?? null,
+    reasons: Array.isArray(entry?.reasons) ? entry.reasons.filter((reason) => typeof reason === 'string') : []
+  };
+}
+
+function mapDerived(derived) {
+  if (!derived || typeof derived !== 'object') return null;
+  const godot = derived.godot ?? null;
+  return {
+    derivedId: derived.derived_id ?? null,
+    recipeSha256: derived.recipe_sha256 ?? null,
+    tool: derived.tool ?? null,
+    target: derived.target ?? null,
+    sources: Array.isArray(derived.sources) ? derived.sources : [],
+    summary: derived.summary ?? null,
+    clips: (Array.isArray(derived.clips) ? derived.clips : []).map((clip) => ({
+      output: clip?.output ?? null,
+      sourceClip: clip?.source_clip ?? null,
+      mode: clip?.mode ?? null,
+      rootMotion: clip?.root_motion ?? null,
+      loop: clip?.loop ?? null,
+      status: clip?.status ?? null,
+      frames: clip?.frames ?? null,
+      durationS: clip?.duration_s ?? null,
+      error: clip?.error ?? null,
+      metrics: clip?.metrics ?? {},
+      issues: Array.isArray(clip?.issues) ? clip.issues : []
+    })),
+    exportCheck: derived.export_check ?? null,
+    godot: godot ? { ok: godot.ok ?? null, status: godot.status ?? null, engine: godot.engine ?? null, clips: Array.isArray(godot.clips) ? godot.clips : [] } : null
+  };
+}
+
+function mapAnimation(animation) {
+  if (!animation || typeof animation !== 'object') return null;
+  const skeleton = animation.skeleton ?? null;
+  return {
+    format: animation.format ?? null,
+    clips: (Array.isArray(animation.clips) ? animation.clips : []).map((clip) => ({
+      name: clip?.name ?? null,
+      durationS: typeof clip?.duration_s === 'number' ? clip.duration_s : null,
+      channels: clip?.channels ?? null,
+      rootTranslation: Array.isArray(clip?.root_translation) ? clip.root_translation : []
+    })),
+    skeleton: skeleton ? { name: skeleton.name ?? null, jointCount: skeleton.joint_count ?? null, naming: skeleton.naming ?? null,
+      family: skeleton.family ?? null, rig: skeleton.rig ?? null, signature: skeleton.signature ?? null } : null,
+    classification: (Array.isArray(animation.classification) ? animation.classification : []).map(mapClassification),
+    derived: mapDerived(animation.derived),
+    mechanical: animation.mechanical && typeof animation.mechanical === 'object' ? {
+      profile: animation.mechanical.profile ?? null,
+      pivots: Array.isArray(animation.mechanical.pivots) ? animation.mechanical.pivots : [],
+      issues: Array.isArray(animation.mechanical.issues) ? animation.mechanical.issues : [],
+      note: animation.mechanical.note ?? null
+    } : null
+  };
+}
+
+export function componentOf(revision) {
+  return revision?.component || 'model';
+}
+
 export function mapRevision(revision, asset = null) {
   const files = (revision?.files ?? []).map(mapFile);
   const dates = revisionDates(revision);
   const model = modelFile(files, revision);
   const preview = model ? null : previewImageFile(files, revision);
+  const component = componentOf(revision);
+  const canonicalId = component === 'model' ? asset?.canonical_revision : asset?.component_canonicals?.[component];
   return {
     revisionId: revision?.revision_id ?? null,
+    component,
+    componentLabel: componentLabel(component),
     state: revision?.canonical_state ?? null,
-    isCanonical: !isMissing(asset?.canonical_revision) && asset.canonical_revision === revision?.revision_id,
+    isCanonical: !isMissing(canonicalId) && canonicalId === revision?.revision_id,
+    animation: mapAnimation(revision?.animation),
     pipelineStatus: revision?.pipeline_status ?? null,
     ...dates,
     latestDate: latestTimestamp(Object.values(dates)),
@@ -365,9 +454,10 @@ export function mapAsset(asset) {
   }
   for (const group of Object.values(groups)) group.sort(compareRevisionsForDisplay);
 
-  // Canonical comes only from asset.canonical_revision; newest is never assumed to be canonical.
+  // Canonical comes only from asset.canonical_revision (the model) and asset.component_canonicals (other parts);
+  // newest is never assumed to be canonical.
   const canonicalRevisionId = asset?.canonical_revision ?? null;
-  const canonical = revisions.find((revision) => revision.isCanonical) ?? null;
+  const canonical = revisions.find((revision) => revision.isCanonical && revision.component === 'model') ?? null;
   const canonicalIssues = [];
   if (isMissing(canonicalRevisionId)) {
     canonicalIssues.push('No canonical revision is recorded.');
@@ -376,12 +466,25 @@ export function mapAsset(asset) {
   } else if (canonical.state !== 'canonical') {
     canonicalIssues.push(`Recorded canonical revision "${canonicalRevisionId}" has state "${displayValue(canonical.state)}".`);
   }
-  const otherCanonical = groups.canonical.filter((revision) => revision.revisionId !== canonicalRevisionId);
+  const otherCanonical = groups.canonical.filter((revision) => !revision.isCanonical);
   if (otherCanonical.length) {
     canonicalIssues.push(`Revision(s) marked canonical but not recorded as the asset's canonical: ${otherCanonical.map((r) => r.revisionId).join(', ')}.`);
   }
 
   const manualReviewRevisionIds = revisions.filter((revision) => revision.manualReview.required).map((revision) => revision.revisionId);
+  const components = {};
+  for (const revision of revisions) (components[revision.component] ??= []).push(revision);
+  for (const list of Object.values(components)) list.sort(compareRevisionsForDisplay);
+  const modelGroups = { canonical: [], candidate: [], superseded: [], other: [] };
+  for (const revision of components.model ?? []) (STATE_ORDER.includes(revision.state) ? modelGroups[revision.state] : modelGroups.other).push(revision);
+  const bindings = asset?.animation_bindings && typeof asset.animation_bindings === 'object' ? {
+    profile: asset.animation_bindings.profile ?? null,
+    updatedAt: asset.animation_bindings.updated_at ?? null,
+    slots: Object.fromEntries(Object.entries(asset.animation_bindings.slots ?? {}).map(([slot, value]) => [slot, {
+      revisionId: value?.revision_id ?? null, clip: value?.clip ?? null, loop: value?.loop ?? null, rootMotion: value?.root_motion ?? null,
+      targetRevision: value?.target_revision ?? null, collectionState: value?.collection_state ?? null
+    }]))
+  } : null;
   return {
     assetId: asset?.asset_id ?? null,
     displayName: asset?.display_name ?? null,
@@ -398,6 +501,11 @@ export function mapAsset(asset) {
     revisionCount: revisions.length,
     stateCounts: Object.fromEntries(Object.entries(groups).map(([state, list]) => [state, list.length])),
     groups,
+    modelGroups,
+    components,
+    componentCanonicals: { ...(asset?.component_canonicals ?? {}) },
+    bindings,
+    revisions,
     latestDate: latestTimestamp(revisions.map((revision) => revision.latestDate)),
     noteSummary: shortNote(canonical?.note),
     needsManualReview: manualReviewRevisionIds.length > 0,

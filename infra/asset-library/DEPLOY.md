@@ -169,6 +169,34 @@ Notes:
    existing gameplay art). Confirm `result.json` success, the exact pipeline-staged set and the bot commit on
    `3d-migration`, then that a fresh load (and another device, when available) shows it.
 
+## Animation release — components, retarget and bind jobs
+
+Adds `POST /api/uploads/library` (server-side copy of one of the caller's own `users/{uid}/models/` files into
+staging), `POST /api/jobs/animate` (offline Blender bake on the runner) and `POST /api/jobs/bind` (slot bindings),
+an optional `component` on ingest, and `rigProfiles` in the `/api/manifest` response (read from the same commit as
+the manifest). The mutation lock now expires after 50 minutes. The runner's `animate` and `bind` operations, with
+checksum-verified Blender and Godot downloads, shipped on `invasion-godot` `main` first. The UI offers retargeting
+only for an asset that has a rigged GLB model and clip revisions with recorded animation data.
+
+No IAM, Storage rules, Firestore rules, CORS or lifecycle change: the runtime identity's bucket `storage.objectAdmin`
+already covers the server-side copy, and the new job records use the existing collections. Staged FBX uploads were
+already allowed by the Storage rules.
+
+| # | Step | Command | Reversible by |
+|---|------|---------|---------------|
+| A-1 | Deploy the Function | `firebase deploy --only functions:asset-library --project rigcheck-cfbe3` (read the live service first: runtime account, limits, pinned secret, env) | `gcloud run services update-traffic assetlibraryapi --region us-west1 --to-revisions <previous>=100` |
+| A-2 | Publish the UI | Push the `rigchecks-3d` commit to `main` (GitHub Pages deploys `dist/`, cache `rigcheck-v0.5.0`) | Revert the commit |
+
+The Function goes first: the new routes are additive, so the previous UI keeps working against it.
+
+### Verify after deploying (animation release)
+
+1. Unauthenticated calls to the three new routes return 401 and a foreign origin gets no CORS grant; the live Pages
+   files are byte-identical to the commit.
+2. Signed in as the writer: **Add files** on an existing asset with a model and a clip file, check the suggested
+   components and classifications, add them as candidates. **Retarget…** a source clip onto the model, check the bake
+   table, **Preview on character**, then **Save slot bindings**. Each job commits exactly the pipeline's staged files.
+
 ## Verify after deploying (Phase 2 acceptance)
 
 1. Sign in on RigCheck, open **Assets**: 15 assets, 17 revisions, 2 needing review, header shows the current `3d-migration` SHA.

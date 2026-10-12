@@ -203,7 +203,7 @@ test('ingest dispatches the runner with a signed staged URL, the recorded size a
     assert.doesNotMatch(JSON.stringify([...db.docs.values()]), /X-Goog-Signature/);
     assert.doesNotMatch(response.text, /X-Goog-Signature/);
     assert.equal(db.docs.get('assetLibraryLocks/mutation').jobId, upload.jobId);
-    assert.equal(db.docs.get('assetLibraryLocks/mutation').expiresAt, time.now + 20 * MINUTE);
+    assert.equal(db.docs.get('assetLibraryLocks/mutation').expiresAt, time.now + 50 * MINUTE);
     assert.equal(db.docs.get('assetLibraryRate/writer-uid').dispatch.count, 1);
 
     const again = await post(server, '/api/jobs/ingest', { jobId: upload.jobId, baseSha: HEAD_A, assetId: 'sample_asset' });
@@ -421,7 +421,7 @@ test('a dry run without warnings confirms without accept_warnings; an unreadable
   });
 });
 
-test('a second mutation while the lock is held returns 409; the lock frees on completion or after 20 minutes', async () => {
+test('a second mutation while the lock is held returns 409; the lock frees on completion or after 50 minutes', async () => {
   const { app, github, store, time, db } = harness();
   await withServer(app, async (server) => {
     const dryRun = await finishedDryRun(server, github, time);
@@ -452,9 +452,9 @@ test('a second mutation while the lock is held returns 409; the lock frees on co
     const retry = await post(server, '/api/jobs/ingest', { jobId: second.jobId, baseSha: HEAD_A, assetId: 'other_asset' }, 'writer2');
     assert.equal(retry.status, 202, retry.text);
 
-    time.now += 20 * MINUTE + 1;
+    time.now += 50 * MINUTE + 1;
     const afterExpiry = await post(server, '/api/jobs/promote', { dryRun: false, dryRunJobId: dryRun.jobId });
-    assert.equal(afterExpiry.status, 202, 'a lost run cannot hold the lock beyond 20 minutes');
+    assert.equal(afterExpiry.status, 202, 'a lost run cannot hold the lock beyond 50 minutes');
     assert.equal(db.docs.get('assetLibraryLocks/mutation').jobId, afterExpiry.body.job.jobId);
   });
   assertRunnerContract(github);

@@ -65,7 +65,14 @@ const MESSAGES = {
   run_not_found: 'The job run never started on GitHub.',
   result_missing: 'The job run finished without a result.',
   result_invalid: 'The job result could not be read.',
-  result_mismatch: 'The job result belonged to a different job.'
+  result_mismatch: 'The job result belonged to a different job.',
+  not_found: 'That revision is not in the manifest at the loaded commit. Refresh and try again.',
+  library_file_not_found: 'That file is no longer in your RigCheck Cloud Library.',
+  library_file_not_owned: 'That Cloud Library entry does not belong to this account.',
+  bake_failed: 'No clip could be baked and verified for this target. See the per-clip results.',
+  tools_unavailable: 'Blender is not available on the job runner.',
+  invalid_target: 'The bake target must be a model revision with a GLB.',
+  invalid_source: 'A source revision has no GLB or FBX file.'
 };
 
 export function describeApiError(code) {

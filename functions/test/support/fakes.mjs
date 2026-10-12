@@ -40,6 +40,8 @@ import re
 CATEGORIES = {"operators", "enemies", "structures", "environments", "weapons",
               "ui", "effects", "audio", "other"}
 ROLES = {"source", "runtime", "textures", "reference"}
+COMPONENTS = {"model", "rig", "animation_collection", "source_clip", "materials", "mechanical"}
+DEFAULT_COMPONENT = "model"
 LFS_EXTENSIONS = {".blend", ".glb", ".fbx", ".psd", ".tga", ".exr", ".tif", ".tiff", ".ktx2"}
 SUPPORTED = LFS_EXTENSIONS | {".png", ".jpg", ".jpeg", ".webp", ".gif", ".hdr",
                               ".wav", ".ogg", ".mp3", ".flac", ".ttf", ".otf"}
@@ -169,6 +171,12 @@ export function createFakeStore() {
     async copyIfAbsent(source, destination) {
       calls.push(['copyIfAbsent', source, destination]);
       if (objects.has(destination)) return;
+      objects.set(destination, objects.get(source));
+    },
+    async copy(source, destination) {
+      calls.push(['copy', source, destination]);
+      if (objects.has(destination)) throw Object.assign(new Error('precondition failed'), { code: 412 });
+      if (!objects.has(source)) throw Object.assign(new Error('not found'), { code: 404 });
       objects.set(destination, objects.get(source));
     },
     async delete(name) {

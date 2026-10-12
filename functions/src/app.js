@@ -9,6 +9,7 @@ import { contentTypeFor, ensureCached, resolveContent } from './content-cache.js
 import { ApiError, errorHandler, sendError } from './errors.js';
 import { createJobService, publicJob } from './jobs.js';
 import { createManifestSource, findListedFile } from './manifest-source.js';
+import { createProfilesSource } from './profiles-source.js';
 import { MAX_TEXT, MAX_UPLOAD_BYTES } from './runner-contract.js';
 import { createVocabularySource, publicVocabulary } from './vocabulary.js';
 
@@ -56,7 +57,8 @@ export function createApp({
     now
   });
   const vocabulary = createVocabularySource({ github, path: config.vocabularyPath });
-  const jobs = createJobService({ db, github, store, source, vocabulary, config, now, makeJobId, logger });
+  const profiles = createProfilesSource({ github, path: config.rigProfilesPath ?? 'docs/ASSET_RIG_PROFILES.json' });
+  const jobs = createJobService({ db, github, store, source, vocabulary, profiles, config, now, makeJobId, logger });
   const jsonBody = express.json({ limit: '16kb', strict: true });
 
   const app = express();
@@ -78,12 +80,20 @@ export function createApp({
     } catch (error) {
       logger.error('Asset Library vocabulary unavailable', { sha, code: error?.code, message: error?.message });
     }
+    // Private rig profiles for client-side classification of files before upload (null on older commits).
+    let rigProfiles = null;
+    try {
+      rigProfiles = await profiles.at(sha);
+    } catch (error) {
+      logger.error('Asset Library rig profiles unavailable', { sha, message: error?.message });
+    }
     res.json({
       commitSha: sha,
       branch: config.manifestBranch,
       manifestPath: config.manifestPath,
       manifest,
-      vocabulary: pipelineVocabulary
+      vocabulary: pipelineVocabulary,
+      rigProfiles
     });
   });
 
@@ -129,6 +139,18 @@ export function createApp({
 
   app.post('/api/uploads', requireWriter, jsonBody, async (req, res) => {
     res.status(201).json(await jobs.reserveUpload(req.assetUser, req.body));
+  });
+
+  app.post('/api/uploads/library', requireWriter, jsonBody, async (req, res) => {
+    res.status(201).json(await jobs.reserveFromLibrary(req.assetUser, req.body));
+  });
+
+  app.post('/api/jobs/animate', requireWriter, jsonBody, async (req, res) => {
+    res.status(202).json({ job: publicJob(await jobs.startAnimate(req.assetUser, req.body)) });
+  });
+
+  app.post('/api/jobs/bind', requireWriter, jsonBody, async (req, res) => {
+    res.status(202).json({ job: publicJob(await jobs.startBind(req.assetUser, req.body)) });
   });
 
   app.post('/api/jobs/ingest', requireWriter, jsonBody, async (req, res) => {
