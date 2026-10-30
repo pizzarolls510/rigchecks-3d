@@ -17,5 +17,16 @@ service cloud.firestore {
     match /assetLibraryRate/{userId} {
       allow read, write: if false;
     }
+    // Agent registrations, the agent kill switch and the request audit log: server-only. Agents are service accounts
+    // that call the API; they are never Firebase users, so no client rule can admit them here.
+    match /assetLibraryAgents/{agentId} {
+      allow read, write: if false;
+    }
+    match /assetLibraryControl/{docId} {
+      allow read, write: if false;
+    }
+    match /assetLibraryAudit/{entryId} {
+      allow read, write: if false;
+    }
   }
 }

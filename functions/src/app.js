@@ -3,12 +3,15 @@
 // status for any role (see jobs.js).
 import { randomUUID } from 'node:crypto';
 import express from 'express';
-import { authMiddleware, corsMiddleware, requireWriter } from './access.js';
+import { authMiddleware, corsMiddleware, createAgentResolver, requirePermission } from './access.js';
+import { createAuditLog } from './audit.js';
 import { DEFAULT_CONFIG } from './config.js';
 import { contentTypeFor, ensureCached, resolveContent } from './content-cache.js';
 import { ApiError, errorHandler, sendError } from './errors.js';
 import { createJobService, publicJob } from './jobs.js';
+import { duplicateMatches, resolveAssetName } from './identity.js';
 import { createManifestSource, findListedFile } from './manifest-source.js';
+import { PERMISSIONS } from './permissions.js';
 import { createProfilesSource } from './profiles-source.js';
 import { MAX_TEXT, MAX_UPLOAD_BYTES } from './runner-contract.js';
 import { createVocabularySource, publicVocabulary } from './vocabulary.js';
@@ -40,6 +43,7 @@ export function parseFileQuery(query) {
 
 export function createApp({
   verifyIdToken,
+  verifyAgentToken = null,
   github,
   store,
   db,
@@ -60,6 +64,13 @@ export function createApp({
   const profiles = createProfilesSource({ github, path: config.rigProfilesPath ?? 'docs/ASSET_RIG_PROFILES.json' });
   const jobs = createJobService({ db, github, store, source, vocabulary, profiles, config, now, makeJobId, logger });
   const jsonBody = express.json({ limit: '16kb', strict: true });
+  const audit = createAuditLog({ db, config, now, logger });
+  const resolveAgent = verifyAgentToken ? createAgentResolver({ db, config, now }) : null;
+  const can = (permission) => requirePermission(permission);
+  const started = (res, job) => {
+    res.locals.jobId = job.jobId;
+    return { job: publicJob(job) };
+  };
 
   const app = express();
   app.disable('x-powered-by');
@@ -69,9 +80,36 @@ export function createApp({
     next();
   });
   app.use(corsMiddleware({ allowedOrigins: config.allowedOrigins, allowDevOrigins: config.allowDevOrigins }));
-  app.use('/api', authMiddleware({ verifyIdToken }));
+  app.use('/api', audit.middleware);
+  app.use('/api', authMiddleware({ verifyIdToken, verifyAgentToken, resolveAgent }));
+  app.locals.audit = audit;
 
-  app.get('/api/manifest', async (req, res) => {
+  // Who the API takes the caller to be, so an agent host can prove its credentials end to end (never secrets).
+  app.get('/api/whoami', (req, res) => {
+    const principal = req.principal;
+    res.json({
+      kind: principal.kind,
+      id: principal.id,
+      role: principal.role,
+      permissions: [...principal.permissions].sort(),
+      ignoredPermissions: principal.ignoredPermissions ?? [],
+      tokenExpiresAt: principal.tokenExpiresAt ? new Date(principal.tokenExpiresAt).toISOString() : null
+    });
+  });
+
+  // Which logical asset a name means (asset ID or declared alias), before anything is uploaded.
+  app.get('/api/identity/resolve', can(PERMISSIONS.identityCheck), async (req, res) => {
+    const { sha, manifest } = await source.current();
+    res.json({ commitSha: sha, ...resolveAssetName(manifest, req.query.name) });
+  });
+
+  // Whether these exact bytes (SHA-256) are already recorded anywhere, before anything is uploaded.
+  app.post('/api/identity/check', can(PERMISSIONS.identityCheck), jsonBody, async (req, res) => {
+    const { sha, manifest } = await source.current();
+    res.json({ commitSha: sha, matches: duplicateMatches(manifest, req.body) });
+  });
+
+  app.get('/api/manifest', can(PERMISSIONS.libraryRead), async (req, res) => {
     const { sha, manifest } = await source.current();
     // Form choices for the write UI, from the pipeline at the same commit. Browsing never depends on it.
     let pipelineVocabulary = null;
@@ -97,7 +135,7 @@ export function createApp({
     });
   });
 
-  app.get('/api/file', async (req, res) => {
+  app.get('/api/file', can(PERMISSIONS.libraryRead), async (req, res) => {
     const { assetId, revisionId, path } = parseFileQuery(req.query);
     const { sha, manifest } = await source.current();
     if (!findListedFile(manifest, assetId, revisionId, path)) {
@@ -137,39 +175,44 @@ export function createApp({
     });
   });
 
-  app.post('/api/uploads', requireWriter, jsonBody, async (req, res) => {
-    res.status(201).json(await jobs.reserveUpload(req.assetUser, req.body));
+  app.post('/api/uploads', can(PERMISSIONS.uploadCandidate), jsonBody, async (req, res) => {
+    const reservation = await jobs.reserveUpload(req.assetUser, req.body);
+    res.locals.jobId = reservation.jobId;
+    res.status(201).json(reservation);
   });
 
-  app.post('/api/uploads/library', requireWriter, jsonBody, async (req, res) => {
-    res.status(201).json(await jobs.reserveFromLibrary(req.assetUser, req.body));
+  app.post('/api/uploads/library', can(PERMISSIONS.libraryImport), jsonBody, async (req, res) => {
+    const reservation = await jobs.reserveFromLibrary(req.assetUser, req.body);
+    res.locals.jobId = reservation.jobId;
+    res.status(201).json(reservation);
   });
 
-  app.post('/api/jobs/animate', requireWriter, jsonBody, async (req, res) => {
-    res.status(202).json({ job: publicJob(await jobs.startAnimate(req.assetUser, req.body)) });
+  app.post('/api/jobs/animate', can(PERMISSIONS.animateCandidate), jsonBody, async (req, res) => {
+    res.status(202).json(started(res, await jobs.startAnimate(req.assetUser, req.body)));
   });
 
-  app.post('/api/jobs/bind', requireWriter, jsonBody, async (req, res) => {
-    res.status(202).json({ job: publicJob(await jobs.startBind(req.assetUser, req.body)) });
+  app.post('/api/jobs/bind', can(PERMISSIONS.bind), jsonBody, async (req, res) => {
+    res.status(202).json(started(res, await jobs.startBind(req.assetUser, req.body)));
   });
 
-  app.post('/api/jobs/ingest', requireWriter, jsonBody, async (req, res) => {
-    res.status(202).json({ job: publicJob(await jobs.startIngest(req.assetUser, req.body)) });
+  app.post('/api/jobs/ingest', can(PERMISSIONS.ingestCandidate), jsonBody, async (req, res) => {
+    res.status(202).json(started(res, await jobs.startIngest(req.assetUser, req.body)));
   });
 
-  app.post('/api/jobs/promote', requireWriter, jsonBody, async (req, res) => {
-    res.status(202).json({ job: publicJob(await jobs.startPromote(req.assetUser, req.body)) });
+  // Dry run (promote:dry_run) or confirm (promote:confirm, people only); the service checks which one is asked for.
+  app.post('/api/jobs/promote', jsonBody, async (req, res) => {
+    res.status(202).json(started(res, await jobs.startPromote(req.assetUser, req.body)));
   });
 
-  app.post('/api/jobs/validate', requireWriter, jsonBody, async (req, res) => {
-    res.status(202).json({ job: publicJob(await jobs.startValidate(req.assetUser, req.body)) });
+  app.post('/api/jobs/validate', can(PERMISSIONS.validate), jsonBody, async (req, res) => {
+    res.status(202).json(started(res, await jobs.startValidate(req.assetUser, req.body)));
   });
 
-  app.get('/api/jobs', async (req, res) => {
+  app.get('/api/jobs', can(PERMISSIONS.jobsRead), async (req, res) => {
     res.json({ jobs: await jobs.listJobs(req.query.asset) });
   });
 
-  app.get('/api/jobs/:jobId', async (req, res) => {
+  app.get('/api/jobs/:jobId', can(PERMISSIONS.jobsRead), async (req, res) => {
     res.json({ job: publicJob(await jobs.getJob(req.params.jobId)) });
   });
 

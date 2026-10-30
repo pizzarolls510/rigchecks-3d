@@ -198,6 +198,11 @@ export function createFakeStore() {
     async signedStagedReadUrl(name, { expiresAt }) {
       calls.push(['signedStagedReadUrl', name, { expiresAt }]);
       return `https://storage.googleapis.com/fake-bucket/${encodeURI(name)}?X-Goog-Expires=1800&X-Goog-Signature=staged`;
+    },
+    async signedStagedUploadUrl(name, { expiresAt, contentType, size }) {
+      calls.push(['signedStagedUploadUrl', name, { expiresAt, contentType, size }]);
+      const headers = { 'x-goog-content-length-range': `${size},${size}` };
+      return { url: `https://storage.googleapis.com/fake-bucket/${encodeURI(name)}?X-Goog-Signature=upload`, headers: { 'Content-Type': contentType, ...headers } };
     }
   };
 }
@@ -259,6 +264,25 @@ export const TOKENS = {
   noclaim: { uid: 'plain-uid' },
   bogusrole: { uid: 'bogus-uid', assetLibraryRole: 'admin' }
 };
+
+// Agent tokens: an unsigned JWT-shaped string whose payload names a Google issuer, so the API routes it to the agent
+// verifier; the fake verifier then looks up the claims by the token's signature segment.
+export function agentToken(name) {
+  const part = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  return `${part({ alg: 'RS256' })}.${part({ iss: 'https://accounts.google.com' })}.${name}`;
+}
+
+export const AGENT_CLAIMS = {
+  curator: { email: 'asset-curator@example-project.iam.gserviceaccount.com', sub: '1001', iat: 1_800_000_000, exp: 1_800_003_600 },
+  stranger: { email: 'someone-else@example-project.iam.gserviceaccount.com', sub: '2002', iat: 1_800_000_000, exp: 1_800_003_600 },
+  impostor: { email: 'asset-curator@example-project.iam.gserviceaccount.com', sub: '9999', iat: 1_800_000_000, exp: 1_800_003_600 }
+};
+
+export async function fakeVerifyAgentToken(token) {
+  const claims = AGENT_CLAIMS[token.split('.')[2]];
+  if (!claims) throw new Error('invalid agent token');
+  return claims;
+}
 
 export async function fakeVerifyIdToken(token) {
   const decoded = TOKENS[token];

@@ -11,14 +11,16 @@ export const MUTATIONS = Object.freeze(['ingest', 'promote_confirm', 'animate', 
 
 // Inputs each operation accepts (job_id and operation are always sent). A runner input counts as "provided"
 // whenever it is non-empty, so false booleans and absent values are omitted rather than sent as "false" or "".
+// `context` (every operation) is one bounded JSON object for fields added after the runner's 25-input limit was near:
+// the requesting principal and, for ingest, identity and lineage options. Its keys are fixed in the runner.
 export const ALLOWED = Object.freeze({
-  validate: ['asset_id', 'revision_id', 'recheck', 'strict'],
+  validate: ['asset_id', 'revision_id', 'recheck', 'strict', 'context'],
   ingest: ['base_sha', 'asset_id', 'revision_id', 'category', 'display_name', 'role', 'note', 'source', 'creator',
-    'staged_url', 'expected_size', 'expected_md5', 'file_name', 'component'],
-  promote_dry_run: ['base_sha', 'asset_id', 'revision_id', 'category', 'display_name', 'destination'],
-  promote_confirm: ['base_sha', 'asset_id', 'revision_id', 'category', 'display_name', 'destination', 'accept_warnings'],
-  animate: ['base_sha', 'asset_id', 'revision_id', 'sources', 'recipe', 'note'],
-  bind: ['base_sha', 'asset_id', 'bindings', 'note']
+    'staged_url', 'expected_size', 'expected_md5', 'file_name', 'component', 'context'],
+  promote_dry_run: ['base_sha', 'asset_id', 'revision_id', 'category', 'display_name', 'destination', 'context'],
+  promote_confirm: ['base_sha', 'asset_id', 'revision_id', 'category', 'display_name', 'destination', 'accept_warnings', 'context'],
+  animate: ['base_sha', 'asset_id', 'revision_id', 'sources', 'recipe', 'note', 'context'],
+  bind: ['base_sha', 'asset_id', 'bindings', 'note', 'context']
 });
 export const REQUIRED = Object.freeze({
   validate: [],
@@ -30,7 +32,10 @@ export const REQUIRED = Object.freeze({
 });
 // animate/bind carry references to manifest revisions and small JSON objects (keys fixed in the runner).
 export const MAX_SOURCES = 16;
-export const MAX_JSON = Object.freeze({ recipe: 8000, bindings: 4000 });
+export const MAX_JSON = Object.freeze({ recipe: 8000, bindings: 4000, context: 2000 });
+export const CONTEXT_KEYS = Object.freeze(['actor', 'new_asset', 'confirm_identity', 'allow_duplicate_content', 'parent_revision',
+  'change_kind', 'reason', 'fields', 'dry_run']);
+export const ACTOR = /^(human|agent):[A-Za-z0-9_.@-]{1,128}$/;
 const BOOLEAN_INPUTS = new Set(['accept_warnings', 'recheck', 'strict']);
 
 export const JOB_ID = /^[A-Za-z0-9_-]{8,64}$/;
@@ -102,6 +107,13 @@ export function buildDispatchInputs(jobId, operation, values) {
       inputs[name] = 'true';
     } else {
       inputs[name] = String(value);
+    }
+  }
+  if (inputs.context !== undefined) {
+    const context = JSON.parse(inputs.context);
+    if (!context || typeof context !== 'object' || Array.isArray(context) || Object.keys(context).some((key) => !CONTEXT_KEYS.includes(key))
+      || inputs.context.length > MAX_JSON.context || (context.actor !== undefined && !ACTOR.test(context.actor))) {
+      throw new Error('context must be a small JSON object with known keys');
     }
   }
   const missing = REQUIRED[operation].filter((name) => !(name in inputs));

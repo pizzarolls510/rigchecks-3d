@@ -4,6 +4,7 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { ApiError, UpstreamError } from './errors.js';
 import { TERMINAL_STATUSES, consumeRate, lockIsHeld } from './job-store.js';
+import { PERMISSIONS } from './permissions.js';
 import { slotPolicy } from './profiles-source.js';
 import {
   BASE_SHA,
@@ -11,6 +12,7 @@ import {
   MAX_JSON,
   MAX_SOURCES,
   MAX_UPLOAD_BYTES,
+  MAX_JSON as RUNNER_JSON,
   buildDispatchInputs,
   checkDestination,
   checkFileName,
@@ -134,6 +136,7 @@ export function jobSummary(job) {
     createdAt: new Date(job.createdAt).toISOString(),
     updatedAt: new Date(job.updatedAt).toISOString(),
     createdBy: job.uid,
+    createdByKind: job.principal?.kind ?? 'human',
     baseSha: job.baseSha ?? null,
     revisionId: job.params?.revision_id ?? null,
     commitSha: job.commitSha ?? null,
@@ -152,6 +155,7 @@ export function publicJob(job) {
     createdAt: new Date(job.createdAt).toISOString(),
     updatedAt: new Date(job.updatedAt).toISOString(),
     createdBy: job.uid,
+    createdByKind: job.principal?.kind ?? 'human',
     baseSha: job.baseSha ?? null,
     params: job.params ?? null,
     upload: job.upload ? { fileName: job.upload.fileName, size: job.upload.size, contentType: job.upload.contentType } : null,
@@ -172,7 +176,28 @@ export function createJobService({ db, github, store, source, vocabulary, profil
   const jobPath = (jobId) => `${config.jobsCollection}/${jobId}`;
   const ratePath = (uid) => `${config.rateCollection}/${uid}`;
   const lockPath = config.lockDoc;
-  const rateOptions = (kind) => ({ now: now(), limit: config.rateLimits[kind], windowMs: config.rateWindowMs });
+  // Agents share a lower ceiling that a registration can only lower further.
+  const rateOptions = (kind, user) => ({
+    now: now(),
+    limit: user?.kind === 'agent'
+      ? Math.min(config.agentRateLimits?.[kind] ?? config.rateLimits[kind], Number.isInteger(user.rateLimits?.[kind]) ? user.rateLimits[kind] : Infinity)
+      : config.rateLimits[kind],
+    windowMs: config.rateWindowMs
+  });
+  const actorOf = (user) => `${user.kind === 'agent' ? 'agent' : 'human'}:${user.kind === 'agent' ? user.id : user.uid}`;
+  const can = (user, permission) => Boolean(user.permissions?.has?.(permission));
+  function demand(user, permission, what) {
+    if (can(user, permission)) return;
+    if (user.kind !== 'agent') throw new ApiError(403, 'writer_required', 'This action requires Asset Library write access.');
+    throw new ApiError(403, 'permission_denied', `This agent may not ${what}.`, { permission });
+  }
+  // The runner's one JSON input for the principal and newer options (see runner-contract.js CONTEXT_KEYS).
+  function contextFor(user, extra = {}) {
+    const context = Object.fromEntries(Object.entries({ actor: actorOf(user), ...extra }).filter(([, value]) => value !== undefined && value !== false));
+    const text = JSON.stringify(context);
+    if (text.length > RUNNER_JSON.context) throw invalid('The request carries too much context.');
+    return text;
+  }
   const displayTitle = (jobId) => `asset-job ${jobId}`;
 
   function checkUser(user) {
@@ -191,7 +216,8 @@ export function createJobService({ db, github, store, source, vocabulary, profil
 
   function newJob(user, fields) {
     const at = now();
-    return { uid: user.uid, createdAt: at, updatedAt: at, baseSha: null, params: null, mutation: false, ...fields };
+    return { uid: user.uid, principal: { kind: user.kind ?? 'human', id: user.id ?? user.uid }, createdAt: at, updatedAt: at,
+      baseSha: null, params: null, mutation: false, ...fields };
   }
 
   // Takes the mutation lock for `jobId` inside a transaction (all reads already done by the caller).
@@ -275,15 +301,29 @@ export function createJobService({ db, github, store, source, vocabulary, profil
     });
     await db.runTransaction(async (tx) => {
       const rate = await tx.get(ratePath(user.uid));
-      tx.set(ratePath(user.uid), consumeRate(rate, 'upload', rateOptions('upload')));
+      tx.set(ratePath(user.uid), consumeRate(rate, 'upload', rateOptions('upload', user)));
       tx.set(jobPath(jobId), job);
     });
-    return { jobId, stagingPath, maxBytes: MAX_UPLOAD_BYTES, expiresAt: new Date(expiresAt).toISOString() };
+    const reservation = { jobId, stagingPath, maxBytes: MAX_UPLOAD_BYTES, expiresAt: new Date(expiresAt).toISOString() };
+    if (user.kind === 'agent') {
+      // Agents are not Firebase users, so Storage rules cannot admit them: they PUT to a short-lived URL signed for
+      // exactly this object, content type and size. The ingest step still verifies size and MD5.
+      const uploadExpiresAt = now() + config.stagedUrlTtlMs;
+      const upload = await store.signedStagedUploadUrl(stagingPath, { expiresAt: uploadExpiresAt, contentType: job.upload.contentType, size });
+      reservation.upload = { method: 'PUT', url: upload.url, headers: upload.headers, expiresAt: new Date(uploadExpiresAt).toISOString() };
+    }
+    return reservation;
   }
 
   async function startIngest(user, body) {
     checkUser(user);
-    only(body, ['jobId', 'baseSha', 'assetId', 'category', 'displayName', 'revisionId', 'role', 'note', 'source', 'creator', 'component']);
+    only(body, ['jobId', 'baseSha', 'assetId', 'category', 'displayName', 'revisionId', 'role', 'note', 'source', 'creator', 'component',
+      'createAsset', 'confirmIdentity', 'allowDuplicateContent', 'parentRevision', 'changeKind']);
+    const createAsset = optionalBoolean(body, 'createAsset');
+    const confirmIdentity = optionalBoolean(body, 'confirmIdentity');
+    const allowDuplicateContent = optionalBoolean(body, 'allowDuplicateContent');
+    if (createAsset) demand(user, PERMISSIONS.assetCreate, 'create a new logical asset; ask a person to create it');
+    if (confirmIdentity || allowDuplicateContent) demand(user, PERMISSIONS.identityOverride, 'override an identity or duplicate check');
     const jobId = requiredId(body.jobId, JOB_ID, 'jobId');
     const baseSha = requiredId(body.baseSha, BASE_SHA, 'baseSha');
     const reserved = await db.get(jobPath(jobId));
@@ -308,6 +348,24 @@ export function createJobService({ db, github, store, source, vocabulary, profil
       creator: checkText('creator', body.creator)
     };
     checkFileName(reserved.upload.fileName, vocab.supportedExtensions);
+    const parentRevision = optionalId(body.parentRevision, vocab.revisionId, 'parent revision ID');
+    const changeKind = optionalChoice(body.changeKind, vocab.changeKinds ?? new Set(), 'changeKind');
+    // Refuse what the pipeline would refuse, before any job starts: an alias, or an unknown asset without createAsset.
+    const { manifest } = await source.current();
+    const named = manifest.assets.find((candidate) => candidate?.asset_id === params.asset_id);
+    const aliasOf = named ? null : manifest.assets.find((candidate) => (candidate?.identity?.aliases ?? []).includes(params.asset_id));
+    if (aliasOf) {
+      throw new ApiError(409, 'alias_of_asset', `${params.asset_id} is an alias of ${aliasOf.asset_id}; upload into ${aliasOf.asset_id}.`, { assetId: aliasOf.asset_id });
+    }
+    if (!named && !createAsset) {
+      throw new ApiError(409, 'unknown_asset', `${params.asset_id} is not a recorded asset. Upload into an existing asset, or have a person create it.`);
+    }
+    if (named && createAsset) throw invalid(`${params.asset_id} already exists; createAsset is only for new assets.`);
+    if (parentRevision && !named?.revisions?.some((revision) => revision?.revision_id === parentRevision)) {
+      throw invalid(`${parentRevision} is not a revision of ${params.asset_id}.`);
+    }
+    const context = contextFor(user, { new_asset: createAsset, confirm_identity: confirmIdentity, allow_duplicate_content: allowDuplicateContent,
+      parent_revision: parentRevision, change_kind: changeKind });
 
     const staged = await store.stat(reserved.upload.stagingPath);
     if (!staged) throw new ApiError(409, 'upload_missing', 'The uploaded file was not found. Upload it again.');
@@ -320,7 +378,7 @@ export function createJobService({ db, github, store, source, vocabulary, profil
       expected_size: String(staged.size),
       expected_md5: staged.md5Hash
     };
-    const publicParams = Object.fromEntries(Object.entries(dispatchParams).filter(([, value]) => value !== undefined));
+    const publicParams = Object.fromEntries(Object.entries({ ...dispatchParams, context: JSON.parse(context) }).filter(([, value]) => value !== undefined));
 
     const job = await db.runTransaction(async (tx) => {
       const current = await tx.get(jobPath(jobId));
@@ -328,7 +386,7 @@ export function createJobService({ db, github, store, source, vocabulary, profil
       const rate = await tx.get(ratePath(user.uid));
       if (current?.status !== 'awaiting_upload') throw new ApiError(409, 'job_already_started', 'That upload has already been submitted.');
       takeLock(tx, lock, holder, jobId, user, 'ingest');
-      tx.set(ratePath(user.uid), consumeRate(rate, 'dispatch', rateOptions('dispatch')));
+      tx.set(ratePath(user.uid), consumeRate(rate, 'dispatch', rateOptions('dispatch', user)));
       const next = { ...current, status: 'queued', baseSha, params: publicParams, dispatchRequestedAt: now(), updatedAt: now() };
       tx.set(jobPath(jobId), next);
       return next;
@@ -343,7 +401,7 @@ export function createJobService({ db, github, store, source, vocabulary, profil
       throw new ApiError(500, 'internal', 'The upload could not be prepared for the job. Nothing was changed.');
     }
     // The signed URL goes only into the dispatch; it is never stored or returned.
-    return dispatch(job, buildDispatchInputs(jobId, 'ingest', { base_sha: baseSha, ...dispatchParams, staged_url: stagedUrl }));
+    return dispatch(job, buildDispatchInputs(jobId, 'ingest', { base_sha: baseSha, ...dispatchParams, staged_url: stagedUrl, context }));
   }
 
   // Copies a file from the caller's own RigCheck Cloud Library into staging (no re-upload from the device) and returns
@@ -379,7 +437,7 @@ export function createJobService({ db, github, store, source, vocabulary, profil
     });
     await db.runTransaction(async (tx) => {
       const rate = await tx.get(ratePath(user.uid));
-      tx.set(ratePath(user.uid), consumeRate(rate, 'upload', rateOptions('upload')));
+      tx.set(ratePath(user.uid), consumeRate(rate, 'upload', rateOptions('upload', user)));
       tx.set(jobPath(jobId), job);
     });
     await store.copy(path, stagingPath);
@@ -461,18 +519,18 @@ export function createJobService({ db, github, store, source, vocabulary, profil
   }
 
   // Shared path for dispatching a mutation that has no upload: lock, rate limit, job record, dispatch.
-  async function startMutation(user, operation, baseSha, params) {
+  async function startMutation(user, operation, baseSha, params, extraContext = {}) {
     const jobId = makeJobId();
     const job = await db.runTransaction(async (tx) => {
       const { lock, holder } = await readLock(tx);
       const rate = await tx.get(ratePath(user.uid));
       takeLock(tx, lock, holder, jobId, user, operation);
-      tx.set(ratePath(user.uid), consumeRate(rate, 'dispatch', rateOptions('dispatch')));
+      tx.set(ratePath(user.uid), consumeRate(rate, 'dispatch', rateOptions('dispatch', user)));
       const next = newJob(user, { jobId, operation, status: 'queued', mutation: true, baseSha, params, dispatchRequestedAt: now() });
       tx.set(jobPath(jobId), next);
       return next;
     });
-    return dispatch(job, buildDispatchInputs(jobId, operation, { base_sha: baseSha, ...params }));
+    return dispatch(job, buildDispatchInputs(jobId, operation, { base_sha: baseSha, ...params, context: contextFor(user, extraContext) }));
   }
 
   async function startPromoteDryRun(user, body) {
@@ -490,15 +548,19 @@ export function createJobService({ db, github, store, source, vocabulary, profil
     const job = newJob(user, { jobId, operation: 'promote_dry_run', status: 'queued', baseSha, params, dispatchRequestedAt: now() });
     await db.runTransaction(async (tx) => {
       const rate = await tx.get(ratePath(user.uid));
-      tx.set(ratePath(user.uid), consumeRate(rate, 'dispatch', rateOptions('dispatch')));
+      tx.set(ratePath(user.uid), consumeRate(rate, 'dispatch', rateOptions('dispatch', user)));
       tx.set(jobPath(jobId), job);
     });
-    return dispatch(job, buildDispatchInputs(jobId, 'promote_dry_run', { base_sha: baseSha, ...params }));
+    return dispatch(job, buildDispatchInputs(jobId, 'promote_dry_run', { base_sha: baseSha, ...params, context: contextFor(user) }));
   }
 
   // A confirm takes every parameter and the base commit from its dry run; the request only names that dry run.
   async function startPromoteConfirm(user, body) {
     only(body, ['dryRun', 'dryRunJobId', 'acceptWarnings']);
+    if (user.kind !== 'human') {
+      throw new ApiError(403, 'human_approval_required', 'Only a person can confirm a promotion. The dry run is ready for review.');
+    }
+    demand(user, PERMISSIONS.promoteConfirm, 'confirm a promotion');
     const dryRunJobId = requiredId(body.dryRunJobId, JOB_ID, 'dryRunJobId');
     const acceptWarnings = optionalBoolean(body, 'acceptWarnings');
     const dryRun = await refresh(dryRunJobId);
@@ -527,7 +589,7 @@ export function createJobService({ db, github, store, source, vocabulary, profil
       const rate = await tx.get(ratePath(user.uid));
       if (current?.confirmJobId) throw new ApiError(409, 'dry_run_already_confirmed', 'This dry run has already been confirmed.');
       takeLock(tx, lock, holder, jobId, user, 'promote_confirm');
-      tx.set(ratePath(user.uid), consumeRate(rate, 'dispatch', rateOptions('dispatch')));
+      tx.set(ratePath(user.uid), consumeRate(rate, 'dispatch', rateOptions('dispatch', user)));
       tx.update(jobPath(dryRunJobId), { confirmJobId: jobId, updatedAt: now() });
       const next = newJob(user, {
         jobId,
@@ -542,7 +604,7 @@ export function createJobService({ db, github, store, source, vocabulary, profil
       tx.set(jobPath(jobId), next);
       return next;
     });
-    return dispatch(job, buildDispatchInputs(jobId, 'promote_confirm', { base_sha: dryRun.baseSha, ...params }));
+    return dispatch(job, buildDispatchInputs(jobId, 'promote_confirm', { base_sha: dryRun.baseSha, ...params, context: contextFor(user) }));
   }
 
   async function startValidate(user, body) {
@@ -559,10 +621,10 @@ export function createJobService({ db, github, store, source, vocabulary, profil
     const job = newJob(user, { jobId, operation: 'validate', status: 'queued', params, dispatchRequestedAt: now() });
     await db.runTransaction(async (tx) => {
       const rate = await tx.get(ratePath(user.uid));
-      tx.set(ratePath(user.uid), consumeRate(rate, 'dispatch', rateOptions('dispatch')));
+      tx.set(ratePath(user.uid), consumeRate(rate, 'dispatch', rateOptions('dispatch', user)));
       tx.set(jobPath(jobId), job);
     });
-    return dispatch(job, buildDispatchInputs(jobId, 'validate', params));
+    return dispatch(job, buildDispatchInputs(jobId, 'validate', { ...params, context: contextFor(user) }));
   }
 
   function readResult(bytes, job) {
@@ -685,7 +747,10 @@ export function createJobService({ db, github, store, source, vocabulary, profil
     startBind,
     startPromote(user, body) {
       checkUser(user);
-      if (body?.dryRun === true) return startPromoteDryRun(user, body);
+      if (body?.dryRun === true) {
+        demand(user, PERMISSIONS.promoteDryRun, 'start a promotion dry run');
+        return startPromoteDryRun(user, body);
+      }
       if (body?.dryRun === false) return startPromoteConfirm(user, body);
       throw invalid('dryRun must be true (start a dry run) or false (confirm one).');
     },

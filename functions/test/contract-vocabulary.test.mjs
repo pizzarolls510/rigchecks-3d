@@ -45,8 +45,14 @@ test('the pipeline vocabulary is read from common.py literals', () => {
     categories: ['audio', 'effects', 'enemies', 'environments', 'operators', 'other', 'structures', 'ui', 'weapons'],
     roles: ['reference', 'runtime', 'source', 'textures'],
     supportedExtensions: [...STAGING_EXTENSIONS].sort(),
-    components: ['animation_collection', 'materials', 'mechanical', 'model', 'rig', 'source_clip']
+    components: ['animation_collection', 'materials', 'mechanical', 'model', 'rig', 'source_clip'],
+    features: [],
+    changeKinds: []
   });
+  // The asset pipeline upgrade adds its features and change kinds as plain literals too.
+  const upgraded = parsePipelineVocabulary(`${PIPELINE_COMMON}\nCHANGE_KINDS = {"initial", "skeleton_upgrade"}\nPIPELINE_FEATURES = {"identity_guard", "lineage"}\n`);
+  assert.deepEqual([...upgraded.features].sort(), ['identity_guard', 'lineage']);
+  assert.deepEqual([...upgraded.changeKinds].sort(), ['initial', 'skeleton_upgrade']);
   // Commits from before components existed: every revision is a model.
   const older = parsePipelineVocabulary(PIPELINE_COMMON.replace(/^COMPONENTS = .*$/m, ''));
   assert.deepEqual([...older.components], ['model']);

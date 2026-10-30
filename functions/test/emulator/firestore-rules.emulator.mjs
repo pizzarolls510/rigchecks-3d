@@ -18,6 +18,9 @@ before(async () => {
     await setDoc(doc(db, 'assetLibraryJobs/job-0001-test'), { status: 'queued', uid: 'writer-uid' });
     await setDoc(doc(db, 'assetLibraryLocks/mutation'), { jobId: 'job-0001-test' });
     await setDoc(doc(db, 'assetLibraryRate/writer-uid'), { dispatch: { count: 1 } });
+    await setDoc(doc(db, 'assetLibraryAgents/asset-curator'), { agentId: 'asset-curator', permissions: ['library:read'] });
+    await setDoc(doc(db, 'assetLibraryControl/agents'), { agentsDisabled: false });
+    await setDoc(doc(db, 'assetLibraryAudit/entry-1'), { outcome: 'denied' });
   });
 });
 
@@ -45,6 +48,20 @@ test('clients never write job metadata, and never read or write the lock or rate
     await assertFails(getDoc(doc(writer, path)));
     await assertFails(setDoc(doc(writer, path), { forged: true }));
     await assertFails(deleteDoc(doc(writer, path)));
+  }
+});
+
+test('no client can read or write agent registrations, the kill switch or the audit log', async () => {
+  const contexts = [env.authenticatedContext('writer-uid', { assetLibraryRole: 'writer' }), env.authenticatedContext('reader-uid', { assetLibraryRole: 'reader' }),
+    env.authenticatedContext('agent_asset-curator', { assetLibraryRole: 'writer' }), env.unauthenticatedContext()];
+  for (const context of contexts) {
+    const db = context.firestore();
+    for (const path of ['assetLibraryAgents/asset-curator', 'assetLibraryControl/agents', 'assetLibraryAudit/entry-1']) {
+      await assertFails(getDoc(doc(db, path)));
+      await assertFails(setDoc(doc(db, path), { permissions: ['promote:confirm'], agentsDisabled: false }));
+      await assertFails(deleteDoc(doc(db, path)));
+    }
+    await assertFails(getDocs(collection(db, 'assetLibraryAudit')));
   }
 });
 

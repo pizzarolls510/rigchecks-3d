@@ -34,7 +34,7 @@ after(async () => {
 function harness() {
   const github = createFakeGitHub({
     head: HEAD_A,
-    commits: { [HEAD_A]: { 'docs/ASSET_MANIFEST.yaml': Buffer.from('{"assets":[]}'), 'tools/asset_pipeline/common.py': Buffer.from(PIPELINE_COMMON) } }
+    commits: { [HEAD_A]: { 'docs/ASSET_MANIFEST.yaml': Buffer.from(JSON.stringify({ assets: ['a', 'b', 'sample_asset', 'other_asset'].map((asset_id) => ({ asset_id, revisions: [{ revision_id: 'r_1' }] })) })), 'tools/asset_pipeline/common.py': Buffer.from(PIPELINE_COMMON) } }
   });
   const store = createFakeStore();
   const time = { now: Date.UTC(2027, 0, 15, 8) };

@@ -19,6 +19,7 @@ export class UpstreamError extends Error {
 }
 
 export function sendError(res, status, code, message, details = undefined) {
+  res.locals.errorCode = code;
   const error = { code, message };
   if (details !== undefined) error.details = details;
   return res.status(status).json({ error });

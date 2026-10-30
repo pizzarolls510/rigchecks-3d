@@ -64,7 +64,10 @@ export function parsePipelineVocabulary(source) {
     roles: stringSet(source, 'ROLES'),
     supportedExtensions: stringSet(source, 'SUPPORTED'),
     // Components arrived with the animation pipeline; older commits have none, so every revision is a model.
-    components: /^COMPONENTS\s*=/m.test(source) ? stringSet(source, 'COMPONENTS') : new Set(['model'])
+    components: /^COMPONENTS\s*=/m.test(source) ? stringSet(source, 'COMPONENTS') : new Set(['model']),
+    // The asset pipeline upgrade (identity, lineage, lifecycle); older commits have neither set.
+    features: /^PIPELINE_FEATURES\s*=/m.test(source) ? stringSet(source, 'PIPELINE_FEATURES') : new Set(),
+    changeKinds: /^CHANGE_KINDS\s*=/m.test(source) ? stringSet(source, 'CHANGE_KINDS') : new Set()
   };
   if ([...vocabulary.supportedExtensions].some((extension) => !/^\.[a-z0-9]{1,10}$/.test(extension))) {
     fail('SUPPORTED contains an unexpected extension');
@@ -80,7 +83,9 @@ export function publicVocabulary(vocabulary) {
     categories: [...vocabulary.categories].sort(),
     roles: [...vocabulary.roles].sort(),
     supportedExtensions: [...vocabulary.supportedExtensions].sort(),
-    components: [...vocabulary.components].sort()
+    components: [...vocabulary.components].sort(),
+    features: [...(vocabulary.features ?? [])].sort(),
+    changeKinds: [...(vocabulary.changeKinds ?? [])].sort()
   };
 }
 

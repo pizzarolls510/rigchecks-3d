@@ -6,9 +6,10 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { defineSecret } from 'firebase-functions/params';
 import { onRequest } from 'firebase-functions/v2/https';
+import { createAgentTokenVerifier } from './agent-auth.js';
 import { createApp } from './app.js';
 import { createBucketStore } from './bucket-store.js';
-import { GITHUB_OWNER, GITHUB_REPO, REGION, RUNTIME_SERVICE_ACCOUNT, STORAGE_BUCKET } from './config.js';
+import { AGENT_TOKEN_AUDIENCE, GITHUB_OWNER, GITHUB_REPO, REGION, RUNTIME_SERVICE_ACCOUNT, STORAGE_BUCKET } from './config.js';
 import { createGitHubClient } from './github.js';
 import { createFirestoreDb } from './job-store.js';
 
@@ -21,6 +22,7 @@ function assetLibraryApp() {
   // Secrets are only readable at request time, so the app is built lazily per instance.
   app ??= createApp({
     verifyIdToken: (token) => getAuth().verifyIdToken(token, true),
+    verifyAgentToken: createAgentTokenVerifier({ audience: AGENT_TOKEN_AUDIENCE }),
     github: createGitHubClient({ token: GITHUB_TOKEN.value(), owner: GITHUB_OWNER, repo: GITHUB_REPO }),
     store: createBucketStore(getStorage().bucket(STORAGE_BUCKET)),
     db: createFirestoreDb(getFirestore())

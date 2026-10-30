@@ -17,6 +17,15 @@ export const DEV_ORIGIN_PATTERN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?
 
 export const ASSET_LIBRARY_ROLES = Object.freeze(['reader', 'writer']);
 
+// Agents (service accounts) authenticate with a Google-signed ID token whose audience is the production API URL.
+// Registrations live in AGENTS_COLLECTION (written only by functions/scripts/register-agent.mjs); AGENT_CONTROL_DOC
+// holds the global kill switch { agentsDisabled: true }. Agent rate limits can only be lowered per agent.
+export const AGENT_TOKEN_AUDIENCE = 'https://us-west1-rigcheck-cfbe3.cloudfunctions.net/assetLibraryApi';
+export const AGENTS_COLLECTION = 'assetLibraryAgents';
+export const AGENT_CONTROL_DOC = 'assetLibraryControl/agents';
+export const AUDIT_COLLECTION = 'assetLibraryAudit';
+export const AGENT_RATE_LIMITS = Object.freeze({ dispatch: 10, upload: 10 });
+
 // Derived, disposable copies of GitHub bytes. Content-addressed, so they can never disagree with GitHub.
 export const CACHE_PREFIX = 'asset-library-cache/';
 export const CACHE_TMP_PREFIX = 'asset-library-cache/tmp/';
@@ -94,5 +103,10 @@ export const DEFAULT_CONFIG = Object.freeze({
   jobListScanLimit: JOB_LIST_SCAN_LIMIT,
   jobsCollection: JOBS_COLLECTION,
   lockDoc: LOCK_DOC,
-  rateCollection: RATE_COLLECTION
+  rateCollection: RATE_COLLECTION,
+  agentTokenAudience: AGENT_TOKEN_AUDIENCE,
+  agentsCollection: AGENTS_COLLECTION,
+  agentControlDoc: AGENT_CONTROL_DOC,
+  auditCollection: AUDIT_COLLECTION,
+  agentRateLimits: AGENT_RATE_LIMITS
 });

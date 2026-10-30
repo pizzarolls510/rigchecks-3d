@@ -66,6 +66,13 @@ export function createBucketStore(bucket) {
     async signedStagedReadUrl(name, { expiresAt }) {
       const [url] = await bucket.file(name).getSignedUrl({ version: 'v4', action: 'read', expires: expiresAt });
       return url;
+    },
+
+    // V4 PUT URL for an agent's upload: one object, its content type and its exact size. The headers must be sent as is.
+    async signedStagedUploadUrl(name, { expiresAt, contentType, size }) {
+      const sizeRange = { 'x-goog-content-length-range': `${size},${size}` };
+      const [url] = await bucket.file(name).getSignedUrl({ version: 'v4', action: 'write', expires: expiresAt, contentType, extensionHeaders: sizeRange });
+      return { url, headers: { 'Content-Type': contentType, ...sizeRange } };
     }
   };
 }

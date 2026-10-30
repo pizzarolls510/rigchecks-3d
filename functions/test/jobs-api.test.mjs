@@ -21,9 +21,13 @@ const COMMON_PATH = 'tools/asset_pipeline/common.py';
 const START = 1_800_000_000_000;
 const MINUTE = 60 * 1000;
 
+// The assets these tests upload into exist, as the API now refuses an unknown asset unless createAsset is set.
+const FIXTURE_ASSETS = ['sample_asset', 'other_asset', 'a'].map((assetId) => ({ asset_id: assetId, revisions: [{ revision_id: 'r_1' }] }));
+const ACTOR = JSON.stringify({ actor: 'human:writer-uid' });
+
 function repo(common = PIPELINE_COMMON) {
   return {
-    [MANIFEST_PATH]: Buffer.from(JSON.stringify({ schema_version: 1, assets: [] })),
+    [MANIFEST_PATH]: Buffer.from(JSON.stringify({ schema_version: 1, assets: FIXTURE_ASSETS })),
     [COMMON_PATH]: Buffer.from(common)
   };
 }
@@ -116,7 +120,9 @@ test('unauthenticated callers, callers without a role and readers can never reac
     assert.equal((await server.request('/api/jobs/job-0001-test')).status, 401);
   });
   assert.equal(github.dispatches.length, 0);
-  assert.equal(db.docs.size, 0, 'nothing was reserved, counted or locked');
+  await app.locals.audit.flush();
+  assert.deepEqual([...db.docs.keys()].filter((path) => !path.startsWith('assetLibraryAudit/')), [], 'nothing was reserved, counted or locked');
+  assert.ok([...db.docs.values()].some((entry) => entry.outcome === 'denied' && entry.principal?.id === 'reader-uid'), 'the denials were audited');
 });
 
 test('upload reservation validates the file name against the pipeline vocabulary and the size ceiling', async () => {
@@ -141,7 +147,7 @@ test('upload reservation validates the file name against the pipeline vocabulary
       assert.equal(response.status, 400, JSON.stringify(json));
       assert.equal(response.body.error.code, 'invalid_request');
     }
-    assert.equal(db.docs.size, 0, 'rejected reservations create nothing and use no quota');
+    assert.equal([...db.docs.keys()].filter((path) => !path.startsWith('assetLibraryAudit/')).length, 0, 'rejected reservations create nothing and use no quota');
 
     const ok = await post(server, '/api/uploads', { fileName: 'Walk Cycle_v2.GLB', size: 200 * 1024 * 1024, contentType: 'model/gltf-binary' });
     assert.equal(ok.status, 201, ok.text);
@@ -193,7 +199,8 @@ test('ingest dispatches the runner with a signed staged URL, the recorded size a
       creator: 'Test',
       file_name: 'model.glb',
       expected_size: String(upload.bytes.length),
-      expected_md5: md5(upload.bytes)
+      expected_md5: md5(upload.bytes),
+      context: ACTOR
     });
     assert.ok(stagedUrl.startsWith('https://storage.googleapis.com/'), 'the runner only accepts Cloud Storage URLs');
     const signing = store.calls.find(([name]) => name === 'signedStagedReadUrl');
@@ -317,7 +324,8 @@ test('a promote dry run dispatches promote_dry_run without taking the mutation l
     revision_id: 'r_1',
     category: 'operators',
     display_name: 'Sample',
-    destination: 'assets/operators/sample_asset'
+    destination: 'assets/operators/sample_asset',
+    context: ACTOR
   }]);
   assertRunnerContract(github);
 });
@@ -392,7 +400,8 @@ test('confirm inherits every parameter and the base commit from its dry run, and
       asset_id: 'sample_asset',
       revision_id: 'r_1',
       destination: 'assets/operators/sample_asset',
-      accept_warnings: 'true'
+      accept_warnings: 'true',
+      context: ACTOR
     });
     assert.equal(db.docs.get(`assetLibraryJobs/${warned.jobId}`).confirmJobId, confirm.jobId);
 
@@ -619,8 +628,8 @@ test('validate dispatches only the asset scope and the flags that are on', async
     assert.equal((await server.request('/api/jobs/validate', { method: 'POST', token: 'writer' })).status, 202, 'an empty body validates the whole manifest');
   });
   assert.deepEqual(github.dispatches.map(({ inputs }) => inputs), [
-    { job_id: 'job-0001-test', operation: 'validate', asset_id: 'sample_asset', revision_id: 'r_1', recheck: 'true' },
-    { job_id: 'job-0002-test', operation: 'validate' }
+    { job_id: 'job-0001-test', operation: 'validate', asset_id: 'sample_asset', revision_id: 'r_1', recheck: 'true', context: ACTOR },
+    { job_id: 'job-0002-test', operation: 'validate', context: ACTOR }
   ]);
   assertRunnerContract(github);
 });
