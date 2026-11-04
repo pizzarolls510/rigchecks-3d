@@ -6,8 +6,9 @@
 import { ApiError } from './errors.js';
 
 // selftest exists in the runner but is a maintenance operation, not part of the API.
-export const OPERATIONS = Object.freeze(['validate', 'ingest', 'promote_dry_run', 'promote_confirm', 'animate', 'bind']);
-export const MUTATIONS = Object.freeze(['ingest', 'promote_confirm', 'animate', 'bind']);
+export const OPERATIONS = Object.freeze(['validate', 'ingest', 'promote_dry_run', 'promote_confirm', 'animate', 'bind',
+  'annotate', 'archive', 'reject', 'unarchive', 'restore_dry_run', 'restore_confirm', 'references', 'lineage', 'retention']);
+export const MUTATIONS = Object.freeze(['ingest', 'promote_confirm', 'animate', 'bind', 'annotate', 'archive', 'reject', 'unarchive', 'restore_confirm']);
 
 // Inputs each operation accepts (job_id and operation are always sent). A runner input counts as "provided"
 // whenever it is non-empty, so false booleans and absent values are omitted rather than sent as "false" or "".
@@ -20,7 +21,16 @@ export const ALLOWED = Object.freeze({
   promote_dry_run: ['base_sha', 'asset_id', 'revision_id', 'category', 'display_name', 'destination', 'context'],
   promote_confirm: ['base_sha', 'asset_id', 'revision_id', 'category', 'display_name', 'destination', 'accept_warnings', 'context'],
   animate: ['base_sha', 'asset_id', 'revision_id', 'sources', 'recipe', 'note', 'context'],
-  bind: ['base_sha', 'asset_id', 'bindings', 'note', 'context']
+  bind: ['base_sha', 'asset_id', 'bindings', 'note', 'context'],
+  annotate: ['base_sha', 'asset_id', 'revision_id', 'context'],
+  archive: ['base_sha', 'asset_id', 'revision_id', 'context'],
+  reject: ['base_sha', 'asset_id', 'revision_id', 'context'],
+  unarchive: ['base_sha', 'asset_id', 'revision_id', 'context'],
+  restore_dry_run: ['base_sha', 'asset_id', 'revision_id', 'context'],
+  restore_confirm: ['base_sha', 'asset_id', 'revision_id', 'accept_warnings', 'context'],
+  references: ['asset_id', 'revision_id', 'context'],
+  lineage: ['asset_id', 'context'],
+  retention: ['context']
 });
 export const REQUIRED = Object.freeze({
   validate: [],
@@ -28,13 +38,22 @@ export const REQUIRED = Object.freeze({
   promote_dry_run: ['base_sha', 'asset_id', 'revision_id'],
   promote_confirm: ['base_sha', 'asset_id', 'revision_id'],
   animate: ['base_sha', 'asset_id', 'revision_id', 'sources'],
-  bind: ['base_sha', 'asset_id', 'bindings']
+  bind: ['base_sha', 'asset_id', 'bindings'],
+  annotate: ['base_sha', 'asset_id', 'revision_id', 'context'],
+  archive: ['base_sha', 'asset_id', 'revision_id', 'context'],
+  reject: ['base_sha', 'asset_id', 'revision_id', 'context'],
+  unarchive: ['base_sha', 'asset_id', 'revision_id'],
+  restore_dry_run: ['base_sha', 'asset_id', 'revision_id'],
+  restore_confirm: ['base_sha', 'asset_id', 'revision_id'],
+  references: ['asset_id', 'revision_id'],
+  lineage: ['asset_id'],
+  retention: []
 });
 // animate/bind carry references to manifest revisions and small JSON objects (keys fixed in the runner).
 export const MAX_SOURCES = 16;
 export const MAX_JSON = Object.freeze({ recipe: 8000, bindings: 4000, context: 2000 });
 export const CONTEXT_KEYS = Object.freeze(['actor', 'new_asset', 'confirm_identity', 'allow_duplicate_content', 'parent_revision',
-  'change_kind', 'reason', 'fields', 'dry_run']);
+  'change_kind', 'reason', 'fields', 'candidates_only']);
 export const ACTOR = /^(human|agent):[A-Za-z0-9_.@-]{1,128}$/;
 const BOOLEAN_INPUTS = new Set(['accept_warnings', 'recheck', 'strict']);
 

@@ -554,29 +554,32 @@ export function createJobService({ db, github, store, source, vocabulary, profil
     return dispatch(job, buildDispatchInputs(jobId, 'promote_dry_run', { base_sha: baseSha, ...params, context: contextFor(user) }));
   }
 
-  // A confirm takes every parameter and the base commit from its dry run; the request only names that dry run.
-  async function startPromoteConfirm(user, body) {
+  // A confirm takes every parameter and the base commit from its dry run; the request only names that dry run. Only the
+  // person who ran the dry run may confirm it, and never an agent.
+  const CONFIRMS = Object.freeze({
+    promote: { noun: 'promotion', dryRun: 'promote_dry_run', confirm: 'promote_confirm', permission: PERMISSIONS.promoteConfirm },
+    restore: { noun: 'restore', dryRun: 'restore_dry_run', confirm: 'restore_confirm', permission: PERMISSIONS.restoreConfirm }
+  });
+
+  async function startConfirm(user, body, kind) {
     only(body, ['dryRun', 'dryRunJobId', 'acceptWarnings']);
     if (user.kind !== 'human') {
-      throw new ApiError(403, 'human_approval_required', 'Only a person can confirm a promotion. The dry run is ready for review.');
+      throw new ApiError(403, 'human_approval_required', `Only a person can confirm a ${kind.noun}. The dry run is ready for review.`);
     }
-    demand(user, PERMISSIONS.promoteConfirm, 'confirm a promotion');
+    demand(user, kind.permission, `confirm a ${kind.noun}`);
     const dryRunJobId = requiredId(body.dryRunJobId, JOB_ID, 'dryRunJobId');
     const acceptWarnings = optionalBoolean(body, 'acceptWarnings');
     const dryRun = await refresh(dryRunJobId);
-    if (!dryRun || dryRun.operation !== 'promote_dry_run') {
-      throw new ApiError(409, 'dry_run_required', 'Confirming a promotion requires a successful dry run.');
-    }
+    const required = () => new ApiError(409, 'dry_run_required', `Confirming a ${kind.noun} requires a successful dry run.`);
+    if (!dryRun || dryRun.operation !== kind.dryRun) throw required();
     if (dryRun.uid !== user.uid) {
       throw new ApiError(403, 'dry_run_not_owned', 'Only the person who ran this dry run can confirm it.');
     }
-    if (dryRun.status !== 'done' || dryRun.ok !== true) {
-      throw new ApiError(409, 'dry_run_required', 'Confirming a promotion requires a successful dry run.');
-    }
+    if (dryRun.status !== 'done' || dryRun.ok !== true) throw required();
     if (dryRun.confirmJobId) throw new ApiError(409, 'dry_run_already_confirmed', 'This dry run has already been confirmed.');
     const warnings = dryRunWarnings(dryRun);
     if ((warnings === null || warnings.length > 0) && !acceptWarnings) {
-      throw new ApiError(409, 'warnings_not_accepted', 'This promotion has validation warnings. Review them and accept them explicitly.', {
+      throw new ApiError(409, 'warnings_not_accepted', `This ${kind.noun} has validation warnings. Review them and accept them explicitly.`, {
         warningCount: warnings?.length ?? null
       });
     }
@@ -588,12 +591,12 @@ export function createJobService({ db, github, store, source, vocabulary, profil
       const { lock, holder } = await readLock(tx);
       const rate = await tx.get(ratePath(user.uid));
       if (current?.confirmJobId) throw new ApiError(409, 'dry_run_already_confirmed', 'This dry run has already been confirmed.');
-      takeLock(tx, lock, holder, jobId, user, 'promote_confirm');
+      takeLock(tx, lock, holder, jobId, user, kind.confirm);
       tx.set(ratePath(user.uid), consumeRate(rate, 'dispatch', rateOptions('dispatch', user)));
       tx.update(jobPath(dryRunJobId), { confirmJobId: jobId, updatedAt: now() });
       const next = newJob(user, {
         jobId,
-        operation: 'promote_confirm',
+        operation: kind.confirm,
         status: 'queued',
         mutation: true,
         baseSha: dryRun.baseSha,
@@ -604,7 +607,116 @@ export function createJobService({ db, github, store, source, vocabulary, profil
       tx.set(jobPath(jobId), next);
       return next;
     });
-    return dispatch(job, buildDispatchInputs(jobId, 'promote_confirm', { base_sha: dryRun.baseSha, ...params, context: contextFor(user) }));
+    return dispatch(job, buildDispatchInputs(jobId, kind.confirm, { base_sha: dryRun.baseSha, ...params, context: contextFor(user) }));
+  }
+
+  // ------------------------------------------------------------------------------------- lifecycle (pipeline upgrade)
+
+  // The pipeline feature an operation needs; an older pipeline commit refuses the request before anything starts.
+  function requireFeature(vocab, feature) {
+    if (!(vocab.features ?? new Set()).has(feature)) {
+      throw new ApiError(503, 'feature_unavailable', `The asset pipeline on ${config.manifestBranch} does not support this yet (${feature}).`);
+    }
+  }
+
+  async function revisionAt(vocab, body) {
+    const assetId = requiredId(body.assetId, vocab.assetId, 'asset ID');
+    const revisionId = requiredId(body.revisionId, vocab.revisionId, 'revision ID');
+    const { manifest } = await source.current();
+    const { revision } = findRevision(manifest, assetId, revisionId);
+    if (!revision) throw new ApiError(404, 'not_found', 'That revision is not in the manifest.');
+    return { assetId, revisionId, revision };
+  }
+
+  function checkReason(value, required) {
+    if (value === undefined || value === null || value === '') {
+      if (required) throw invalid('A reason is required.');
+      return undefined;
+    }
+    if (typeof value !== 'string' || [...value].length > 500 || !value.trim() || /[\u0000-\u0008\u000b-\u001f\u007f]/.test(value)) {
+      throw invalid('reason must be 1-500 printable characters.');
+    }
+    return value;
+  }
+
+  // Notes and lineage confirmations. Recorded source/creator/note values are never overwritten by the pipeline.
+  async function startAnnotate(user, body) {
+    checkUser(user);
+    only(body, ['baseSha', 'assetId', 'revisionId', 'note', 'source', 'creator', 'parentRevision', 'changeKind']);
+    const baseSha = requiredId(body.baseSha, BASE_SHA, 'baseSha');
+    const vocab = await requireCurrentBase(baseSha);
+    requireFeature(vocab, 'annotate');
+    const { assetId, revisionId } = await revisionAt(vocab, body);
+    const fields = Object.fromEntries(Object.entries({ note: checkText('note', body.note), source: checkText('source', body.source),
+      creator: checkText('creator', body.creator) }).filter(([, value]) => value !== undefined));
+    const parentRevision = optionalId(body.parentRevision, vocab.revisionId, 'parent revision ID');
+    const changeKind = optionalChoice(body.changeKind, vocab.changeKinds ?? new Set(), 'changeKind');
+    if (!Object.keys(fields).length && !parentRevision && !changeKind) throw invalid('Nothing to annotate.');
+    return startMutation(user, 'annotate', baseSha, { asset_id: assetId, revision_id: revisionId },
+      { fields: Object.keys(fields).length ? fields : undefined, parent_revision: parentRevision, change_kind: changeKind });
+  }
+
+  // archive | reject | unarchive. Agents (archive:candidate) may archive and unarchive candidates only; rejecting is a
+  // person's review decision. The pipeline refuses canonicals and anything still referenced, and never moves a file.
+  async function startLifecycle(user, body) {
+    checkUser(user);
+    only(body, ['action', 'baseSha', 'assetId', 'revisionId', 'reason']);
+    const action = body.action;
+    if (!['archive', 'reject', 'unarchive'].includes(action)) throw invalid('action must be archive, reject or unarchive.');
+    const baseSha = requiredId(body.baseSha, BASE_SHA, 'baseSha');
+    const vocab = await requireCurrentBase(baseSha);
+    requireFeature(vocab, 'lifecycle');
+    const { assetId, revisionId, revision } = await revisionAt(vocab, body);
+    const full = can(user, PERMISSIONS.archive);
+    if (!full) {
+      demand(user, PERMISSIONS.archiveCandidate, `${action} revisions`);
+      if (action === 'reject') demand(user, PERMISSIONS.archive, 'reject a candidate; a person decides that');
+      if (revision.canonical_state !== 'candidate') throw new ApiError(403, 'permission_denied', 'This agent may change candidates only.');
+    }
+    const reason = checkReason(body.reason, action !== 'unarchive');
+    return startMutation(user, action, baseSha, { asset_id: assetId, revision_id: revisionId },
+      { reason, candidates_only: full ? undefined : true });
+  }
+
+  // Rollback: a dry run (restore:dry_run, agents too) and a confirm by the same person (restore:confirm).
+  async function startRestoreDryRun(user, body) {
+    only(body, ['dryRun', 'baseSha', 'assetId', 'revisionId']);
+    demand(user, PERMISSIONS.restoreDryRun, 'start a restore dry run');
+    const baseSha = requiredId(body.baseSha, BASE_SHA, 'baseSha');
+    const vocab = await requireCurrentBase(baseSha);
+    requireFeature(vocab, 'restore');
+    const { assetId, revisionId, revision } = await revisionAt(vocab, body);
+    if (revision.canonical_state !== 'superseded') throw invalid('Only a superseded revision can be restored.');
+    const params = { asset_id: assetId, revision_id: revisionId };
+    const jobId = makeJobId();
+    const job = newJob(user, { jobId, operation: 'restore_dry_run', status: 'queued', baseSha, params, dispatchRequestedAt: now() });
+    await db.runTransaction(async (tx) => {
+      const rate = await tx.get(ratePath(user.uid));
+      tx.set(ratePath(user.uid), consumeRate(rate, 'dispatch', rateOptions('dispatch', user)));
+      tx.set(jobPath(jobId), job);
+    });
+    return dispatch(job, buildDispatchInputs(jobId, 'restore_dry_run', { base_sha: baseSha, ...params, context: contextFor(user) }));
+  }
+
+  // Read-only reports: references of one revision, an asset's lineage, or the retention proposals.
+  async function startReport(user, body) {
+    checkUser(user);
+    only(body, ['report', 'assetId', 'revisionId']);
+    const report = body.report;
+    if (!['references', 'lineage', 'retention'].includes(report)) throw invalid('report must be references, lineage or retention.');
+    const vocab = await vocabulary.at(await source.currentSha());
+    requireFeature(vocab, report === 'lineage' ? 'lineage' : 'references');
+    const params = {};
+    if (report !== 'retention') params.asset_id = requiredId(body.assetId, vocab.assetId, 'asset ID');
+    if (report === 'references') params.revision_id = requiredId(body.revisionId, vocab.revisionId, 'revision ID');
+    const jobId = makeJobId();
+    const job = newJob(user, { jobId, operation: report, status: 'queued', params, dispatchRequestedAt: now() });
+    await db.runTransaction(async (tx) => {
+      const rate = await tx.get(ratePath(user.uid));
+      tx.set(ratePath(user.uid), consumeRate(rate, 'dispatch', rateOptions('dispatch', user)));
+      tx.set(jobPath(jobId), job);
+    });
+    return dispatch(job, buildDispatchInputs(jobId, report, { ...params, context: contextFor(user) }));
   }
 
   async function startValidate(user, body) {
@@ -751,13 +863,22 @@ export function createJobService({ db, github, store, source, vocabulary, profil
         demand(user, PERMISSIONS.promoteDryRun, 'start a promotion dry run');
         return startPromoteDryRun(user, body);
       }
-      if (body?.dryRun === false) return startPromoteConfirm(user, body);
+      if (body?.dryRun === false) return startConfirm(user, body, CONFIRMS.promote);
       throw invalid('dryRun must be true (start a dry run) or false (confirm one).');
     },
     startValidate(user, body) {
       checkUser(user);
       return startValidate(user, body);
     },
+    startAnnotate,
+    startLifecycle,
+    startRestore(user, body) {
+      checkUser(user);
+      if (body?.dryRun === true) return startRestoreDryRun(user, body);
+      if (body?.dryRun === false) return startConfirm(user, body, CONFIRMS.restore);
+      throw invalid('dryRun must be true (start a dry run) or false (confirm one).');
+    },
+    startReport,
     getJob,
     listJobs
   };

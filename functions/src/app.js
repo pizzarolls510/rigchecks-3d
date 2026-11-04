@@ -204,6 +204,24 @@ export function createApp({
     res.status(202).json(started(res, await jobs.startPromote(req.assetUser, req.body)));
   });
 
+  app.post('/api/jobs/annotate', can(PERMISSIONS.annotate), jsonBody, async (req, res) => {
+    res.status(202).json(started(res, await jobs.startAnnotate(req.assetUser, req.body)));
+  });
+
+  // archive | reject | unarchive; the service checks archive (people) or archive:candidate (agents, candidates only).
+  app.post('/api/jobs/lifecycle', jsonBody, async (req, res) => {
+    res.status(202).json(started(res, await jobs.startLifecycle(req.assetUser, req.body)));
+  });
+
+  // Rollback: dry run (restore:dry_run) or confirm (restore:confirm, people only).
+  app.post('/api/jobs/restore', jsonBody, async (req, res) => {
+    res.status(202).json(started(res, await jobs.startRestore(req.assetUser, req.body)));
+  });
+
+  app.post('/api/jobs/report', can(PERMISSIONS.libraryRead), jsonBody, async (req, res) => {
+    res.status(202).json(started(res, await jobs.startReport(req.assetUser, req.body)));
+  });
+
   app.post('/api/jobs/validate', can(PERMISSIONS.validate), jsonBody, async (req, res) => {
     res.status(202).json(started(res, await jobs.startValidate(req.assetUser, req.body)));
   });
