@@ -74,6 +74,8 @@ export function buildIngestRequest(form, { jobId, baseSha }) {
   for (const field of ['revisionId', 'category', 'role', 'displayName', 'source', 'creator', 'component']) {
     if (clean(form[field])) body[field] = clean(form[field]);
   }
+  // The API refuses an unknown asset ID unless the person asked for a new asset (the form's new-asset fields).
+  if (form.createAsset === true) body.createAsset = true;
   const note = (form.note ?? '').replace(/\r\n?/g, '\n').trim();
   if (note) body.note = note;
   return body;
@@ -101,7 +103,16 @@ const OPERATION_LABELS = {
   promote_confirm: 'Promotion',
   validate: 'Re-validation',
   animate: 'Retarget and bake',
-  bind: 'Animation slot binding'
+  bind: 'Animation slot binding',
+  annotate: 'Annotation',
+  archive: 'Archive',
+  reject: 'Reject',
+  unarchive: 'Unarchive',
+  restore_dry_run: 'Restore dry run',
+  restore_confirm: 'Restore',
+  references: 'Reference scan',
+  lineage: 'Lineage report',
+  retention: 'Retention report'
 };
 
 export function operationLabel(operation) {

@@ -58,6 +58,9 @@ test('requests carry only filled-in fields, trimmed, plus the reviewed base comm
   assert.deepEqual(buildIngestRequest({ assetId: ' sample_asset ', revisionId: '', category: 'ui', role: '', displayName: ' Name ', note: ' a\r\nb ', source: '', creator: 'Me' }, { jobId: 'job-1-abcdef', baseSha: SHA }), {
     jobId: 'job-1-abcdef', baseSha: SHA, assetId: 'sample_asset', category: 'ui', displayName: 'Name', note: 'a\nb', creator: 'Me'
   });
+  assert.equal(buildIngestRequest({ assetId: 'a' }, { jobId: 'job-1-abcdef', baseSha: SHA }).createAsset, undefined, 'existing assets never ask to be created');
+  assert.equal(buildIngestRequest({ assetId: 'new_asset', createAsset: true }, { jobId: 'job-1-abcdef', baseSha: SHA }).createAsset, true);
+  assert.equal(buildIngestRequest({ assetId: 'new_asset', createAsset: 'yes' }, { jobId: 'job-1-abcdef', baseSha: SHA }).createAsset, undefined);
   assert.deepEqual(buildPromoteDryRunRequest({ baseSha: SHA, assetId: 'a', revisionId: 'r', displayName: '', category: 'ui', destination: ' assets/ui/a ' }), {
     dryRun: true, baseSha: SHA, assetId: 'a', revisionId: 'r', category: 'ui', destination: 'assets/ui/a'
   });

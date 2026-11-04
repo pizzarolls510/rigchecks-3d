@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { InspectError, describeFbx, describeGltf, inspectBuffer, readGlbJson } from '../dist/lib/animation-inspect.js';
 import { classify, fileSkeleton, revisionSkeleton } from '../dist/lib/rig-classify.js';
-import { bindableClips, manifestHashes, slotsFor, suggestComponent, suggestParent } from '../dist/lib/asset-components.js';
+import { aliasedAsset, bindableClips, manifestHashes, slotsFor, suggestComponent, suggestParent } from '../dist/lib/asset-components.js';
 
 const FBX = readFileSync(new URL('./fixtures/mixamo-style-walk.fbx', import.meta.url));
 
@@ -145,4 +145,13 @@ test('add-file suggestions keep clip collections from competing with the model',
   assert.deepEqual(slotsFor(PROFILES, 'operators').map((s) => [s.slot, s.loop]), [['idle', true], ['walk', true], ['fall', false]]);
   assert.deepEqual(slotsFor(PROFILES, 'structures'), []);
   assert.deepEqual(bindableClips(manifest.assets[0]).map((c) => c.clip), ['Walk']);
+});
+
+test('a file named after a declared alias is suggested for that asset, never as a new one', () => {
+  const manifest = { assets: [{ asset_id: 'sample_suit', identity: { aliases: ['working_name'] } }, { asset_id: 'other', identity: null }] };
+  assert.equal(aliasedAsset('working_name', manifest), 'sample_suit');
+  assert.equal(aliasedAsset('working_name_walks_v2', manifest), 'sample_suit');
+  assert.equal(aliasedAsset('working_named', manifest), null, 'only whole name parts match');
+  assert.equal(aliasedAsset('sample_suit', manifest), null, 'asset IDs themselves are matched elsewhere');
+  assert.equal(aliasedAsset('anything', { assets: [] }), null);
 });

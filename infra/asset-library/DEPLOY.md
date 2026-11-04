@@ -197,6 +197,61 @@ The Function goes first: the new routes are additive, so the previous UI keeps w
    components and classifications, add them as candidates. **Retarget…** a source clip onto the model, check the bake
    table, **Preview on character**, then **Save slot bindings**. Each job commits exactly the pipeline's staged files.
 
+## Asset pipeline upgrade — agent principals, identity guards, lifecycle and rollback
+
+Adds service-account agents (`assetLibraryAgents`, kill switch `assetLibraryControl/agents`, audit log
+`assetLibraryAudit`), per-route permissions, `GET /api/whoami`, `GET /api/identity/resolve`, `POST /api/identity/check`,
+`POST /api/jobs/annotate`, `/api/jobs/lifecycle` (archive, reject, unarchive), `/api/jobs/restore` (dry run, then a
+confirm by the same person) and `/api/jobs/report` (references, lineage, retention). Ingest gains `createAsset`,
+`confirmIdentity`, `allowDuplicateContent`, `parentRevision` and `changeKind`; the UI sends `createAsset` when its
+new-asset fields are used. The runner receives the principal and options in one new JSON input, `context`.
+
+Order matters, because each part is checked against the next: the new API sends `context`, which an older workflow
+does not declare (GitHub refuses the dispatch), and the new pipeline refuses an unknown asset ID unless asked to create
+it. The runner feature-detects the pipeline, so it can go first.
+
+| # | Step | Command | Reversible by |
+|---|------|---------|---------------|
+| U-1 | Runner on `invasion-godot` `main` | Push the runner commits (workflow + `run_job.py`) | Revert the commits |
+| U-2 | Pipeline on `3d-migration` | Push the pipeline commits (no manifest change) | Revert the commits |
+| U-3 | Firestore rules | `firebase deploy --only firestore:rules --project rigcheck-cfbe3` (diff the live ruleset first) | Redeploy the previous ruleset |
+| U-4 | Function | `firebase deploy --only functions:asset-library --project rigcheck-cfbe3` (read the live service first) | `gcloud run services update-traffic assetlibraryapi --region us-west1 --to-revisions <previous>=100` |
+| U-5 | UI | Push the `rigchecks-3d` commit to `main` (cache `rigcheck-v0.5.1`) | Revert the commit |
+
+Between U-2 and U-5, creating a new asset through the old UI fails with a clear error; uploads into existing assets,
+promotions and every other job keep working. Run U-2 to U-5 together.
+
+No IAM change is needed for the API itself: agents are verified from Google-signed tokens, and the runtime identity
+already signs the staged URLs it now also issues for agent uploads (`PUT`, exact size, 30 minutes).
+
+### Onboard an agent (owner)
+
+1. Create one service account per agent, with **no project roles**: it only needs to exist and to mint ID tokens.
+   `gcloud iam service-accounts create asset-curator --project rigcheck-cfbe3 --display-name "Asset Library agent"`.
+2. Give the agent host a way to mint its ID token, keyless where possible: workload identity federation from the host's
+   own identity provider, or `gcloud` impersonation (`roles/iam.serviceAccountTokenCreator` on that account for the
+   host's identity). Otherwise create a key, store it only in the host's secret store, and rotate it every 90 days.
+3. Register it (dry run first): `node functions/scripts/register-agent.mjs --agent asset-curator --email
+   asset-curator@rigcheck-cfbe3.iam.gserviceaccount.com --sa-id <uniqueId> --expires-days 90`, then `--apply`. The
+   default permissions let it read, check identities, upload and ingest candidates into existing assets, validate
+   and start promotion dry runs. `annotate`, `archive:candidate`, `restore:dry_run` and `animate:candidate` are
+   opt-in. Confirms, asset creation, identity overrides, bindings and Cloud Library imports are never grantable.
+4. On the agent host: `GOOGLE_APPLICATION_CREDENTIALS=<config> node functions/scripts/agent-check.mjs` must report
+   `whoami` 200 with the expected permissions. It refuses a person's own credentials before requesting any token.
+
+Revoke: `register-agent.mjs --agent <id> --disable --apply` (next request) or `--kill-switch on --apply` (every
+agent); then disable or delete the service account's keys. Every agent request, allowed or denied, is in
+`assetLibraryAudit`.
+
+### Verify after deploying (pipeline upgrade)
+
+1. Unauthenticated calls to the new routes return 401; a reader gets 403 on every write route; `whoami` works for a
+   reader.
+2. Signed in as the writer: upload a file into an existing asset (no `createAsset`), then a file under a new asset ID
+   (the UI sends `createAsset`); a promotion dry run; a references report on a candidate.
+3. A registered test agent: `whoami`, an identity check, an upload into an existing asset; a promote or restore
+   confirm, an asset creation and a bind are refused with 403 and appear in `assetLibraryAudit`.
+
 ## Verify after deploying (Phase 2 acceptance)
 
 1. Sign in on RigCheck, open **Assets**: 15 assets, 17 revisions, 2 needing review, header shows the current `3d-migration` SHA.

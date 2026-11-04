@@ -90,6 +90,16 @@ export function suggestComponent(fileName, description, parentAsset, classificat
   return { component: 'model', reason: skeleton ? 'A rigged model without clips.' : pivots ? 'A rigid model with named pivots.' : 'A static model.' };
 }
 
+// The asset a file-name stem refers to through a declared alias: the stem is the alias, or starts with it plus "_".
+export function aliasedAsset(stem, manifest) {
+  for (const asset of manifest?.assets ?? []) {
+    for (const alias of asset?.identity?.aliases ?? []) {
+      if (typeof alias === 'string' && alias && (stem === alias || String(stem).startsWith(`${alias}_`))) return asset.asset_id;
+    }
+  }
+  return null;
+}
+
 // Manifest file hashes, so Cloud Library files already recorded in the manifest are not offered as unassigned.
 export function manifestHashes(manifest) {
   const hashes = new Map();

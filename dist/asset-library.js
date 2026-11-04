@@ -21,7 +21,7 @@ import {
 } from "./lib/asset-library-model.js";
 import { InspectError, inspectBuffer } from "./lib/animation-inspect.js";
 import { revisionSkeleton, statusLabel as classificationLabel } from "./lib/rig-classify.js";
-import { bindableClips, classifyAgainstAsset, extensionOf, manifestHashes, slotsFor, suggestComponent, suggestParent } from "./lib/asset-components.js";
+import { aliasedAsset, bindableClips, classifyAgainstAsset, extensionOf, manifestHashes, slotsFor, suggestComponent, suggestParent } from "./lib/asset-components.js";
 import { AssetApiError, apiGet, apiPost, describeApiError, resolveApiBase, shortSha } from "./lib/asset-library-api.js";
 import {
   buildIngestRequest,
@@ -1708,7 +1708,8 @@ function initAssetLibrary() {
 
   function suggestedId(name) {
     const stem = String(name).replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^[^a-z]+/, '').replace(/_+$/, '').slice(0, 64);
-    return stem || 'new_asset';
+    // A working name recorded as an alias (e.g. a file named after it) means that asset, never a new one.
+    return aliasedAsset(stem, rawManifest) ?? (stem || 'new_asset');
   }
 
   function applySuggestions(item, { keepParent = false } = {}) {
@@ -1974,7 +1975,7 @@ function initAssetLibrary() {
         item.message = 'The pipeline is checking and recording the file…';
         refreshAddFiles();
         const values = { assetId: item.assetId, component: item.component, note: addFiles.note ?? '', source: addFiles.source ?? '', creator: addFiles.creator ?? '',
-          ...(rawAsset(item.assetId) ? {} : { displayName: item.displayName, category: item.category }) };
+          ...(rawAsset(item.assetId) ? {} : { displayName: item.displayName, category: item.category, createAsset: true }) };
         const { job } = await apiPost({ base: API_BASE, path: '/api/jobs/ingest', body: buildIngestRequest(values, { jobId: reservation.jobId, baseSha: commitSha }), getIdToken });
         const final = await follow(job, generation);
         if (final?.status === 'done') {
